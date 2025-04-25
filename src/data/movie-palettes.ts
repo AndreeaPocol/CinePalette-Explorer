@@ -3,50 +3,62 @@ export interface MoviePaletteData {
   id: string;
   name: string; // e.g., "The Shawshank Redemption"
   palettePath: string; // Path relative to the /public directory, e.g., "/palettes/tt0111161.png"
-  colors: string[]; // Hex codes, e.g., ["#AABBCC", "#DDEEFF"]
+  colors: string[]; // Hex codes for the swatches, e.g., ["#AABBCC", "#DDEEFF"]
 }
 
 // NOTE: Ensure the corresponding palette images (e.g., tt0111161.png)
-// are placed inside the /public/palettes/ directory.
+// are placed inside the /public/data/ directory.
+// NOTE: Ensure the corresponding frame folders (e.g., /public/frames/tt0111161/#COLORHEX) exist.
 export const moviePalettes: MoviePaletteData[] = [
   {
     id: "tt0111161",
     name: "The Shawshank Redemption (1994)",
-    palettePath: "/palettes/tt0111161.png", // Path served from /public/palettes/tt0111161.png
-    colors: ["#2c3e50", "#bdc3c7", "#3a506b", "#5bc0de", "#1c2541"] // Example colors
+    palettePath: "/data/tt0111161.png", // Corrected path prefix
+    colors: ["#2A2A2A", "#5F6A71", "#8C939A", "#BFC8CE", "#E4E7EA"] // Example colors
   },
   {
     id: "tt0068646",
     name: "The Godfather (1972)",
-    palettePath: "/palettes/tt0068646.png", // Path served from /public/palettes/tt0068646.png
-    colors: ["#000000", "#4d4d4d", "#a37c39", "#800000", "#d4af37"] // Example colors
+    palettePath: "/data/tt0068646.png", // Corrected path prefix
+    colors: ["#1E1A1D", "#4D3B33", "#8F6F54", "#C8A788", "#EEDDC7"] // Example colors
   },
   {
     id: "tt0468569",
     name: "The Dark Knight (2008)",
-    palettePath: "/palettes/tt0468569.png", // Path served from /public/palettes/tt0468569.png
-    colors: ["#000000", "#34495e", "#1abc9c", "#f39c12", "#bdc3c7"] // Example colors
+    palettePath: "/data/tt0468569.png", // Corrected path prefix
+    colors: ["#0D1B2A", "#1B263B", "#415A77", "#778DA9", "#E0E1DD"] // Example colors
   },
   {
-    id: "tt1375666",
-    name: "Inception (2010)",
-    palettePath: "/palettes/tt1375666.png", // Path served from /public/palettes/tt1375666.png
-    colors: ["#2c3e50", "#e74c3c", "#ecf0f1", "#3498db", "#95a5a6"] // Example colors
+    id: "tt2278388",
+    name: "The Grand Budapest Hotel (2014)",
+    palettePath: "/data/tt2278388.png", // Corrected path prefix
+    colors: ["#F1D4AF", "#E0AFA0", "#A97C73", "#8C5E58", "#4A314D"] // Example colors
   },
-  {
-    id: "tt0137523",
-    name: "Fight Club (1999)",
-    palettePath: "/palettes/tt0137523.png", // Path served from /public/palettes/tt0137523.png
-    colors: ["#1f2d3d", "#ecf0f1", "#e74c3c", "#95a5a6", "#34495e"] // Example colors
-  },
-  {
-    id: "tt0052784",
-    name: "Ben-Hur (1959)",
-    palettePath: "/palettes/tt0052784.png", // Path served from /public/palettes/tt0052784.png
-    colors: ["#c0a16b", "#5d3a1a", "#e74c3c", "#fdf5e6", "#465a65"] // Example colors
-  },
+    {
+    id: "tt0052784", // Example ID for testing
+    name: "North by Northwest (1959)", // Example Name
+    palettePath: "/data/tt0052784.png", // Corrected path prefix
+    colors: ["#3D5A80", "#98C1D9", "#E0FBFC", "#EE6C4D", "#293241"] // Example colors
+  }
 ];
 
+/**
+ * Retrieves movie palette data by its IMDb ID.
+ * @param id - The IMDb ID string (e.g., "tt0111161").
+ * @returns The MoviePaletteData object if found, otherwise undefined.
+ */
 export function getMoviePaletteById(id: string): MoviePaletteData | undefined {
+  // Ensure the ID format is roughly correct before searching
+  if (!id || !id.startsWith('tt')) {
+    return undefined;
+  }
   return moviePalettes.find(palette => palette.id === id);
+}
+
+/**
+ * Gets all available movie palettes.
+ * @returns An array of all MoviePaletteData objects.
+ */
+export function getAllMoviePalettes(): MoviePaletteData[] {
+    return moviePalettes;
 }

@@ -12,8 +12,10 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { getMoviePaletteById, type MoviePaletteData } from '@/data/movie-palettes'; // Only import necessary functions/types
 import { explainColorPalette, type ExplainColorPaletteOutput } from '@/ai/flows/explain-color-palette';
-import { Info, Loader2, Search } from 'lucide-react'; // Using Loader2 for a spinning icon, Search for button
+import { Info, Loader2, Search, Image as ImageIcon } from 'lucide-react'; // Using Loader2 for a spinning icon, Search for button
+// Removed: import { readdir } from "fs/promises";
 import Image from 'next/image';
+import { getColorFrameFolders, type GetColorFrameFoldersOutput } from '@/actions/get-color-frames'; // Import the server action
 
 // Define a type for the color explanations state
 type ColorExplanations = Record<string, string | null | 'loading' | 'error'>; // color hex -> explanation, loading, error or null if not fetched
@@ -25,27 +27,59 @@ export default function CinePaletteExplorer(): ReactElement {
   const [colorExplanations, setColorExplanations] = useState<ColorExplanations>({});
   const [isLoadingExplanation, setIsLoadingExplanation] = useState<Record<string, boolean>>({}); // Track loading per color
   const [error, setError] = useState<string | null>(null);
+  const [colorFolders, setColorFolders] = useState<string[]>([]);
+  const [isLoadingFolders, setIsLoadingFolders] = useState<boolean>(false); // State for loading folders
+  const [selectedColor, setSelectedColor] = useState<string | null>(null);
   const [tooltipOpen, setTooltipOpen] = useState<Record<string, boolean>>({});
 
-  // Effect to fetch movie data when a *valid* selectedMovieId is set
+
+  // Effect to fetch movie data and color folders when a *valid* selectedMovieId is set
   useEffect(() => {
     if (selectedMovieId) {
       const movieData = getMoviePaletteById(selectedMovieId);
       if (movieData) {
         setSelectedMovieData(movieData);
-        setColorExplanations({}); // Reset explanations when movie changes
+        setColorExplanations({}); // Reset explanations
         setIsLoadingExplanation({}); // Reset loading states
-        setError(null); // Clear previous errors related to fetching data
+        setSelectedColor(null); // Reset selected color
+        setError(null); // Clear previous errors
+
+        // Fetch color folders using the server action
+        const fetchFolders = async () => {
+          setIsLoadingFolders(true);
+          setColorFolders([]); // Clear old folders
+          try {
+            const result: GetColorFrameFoldersOutput = await getColorFrameFolders({ movieId: selectedMovieId });
+            if (result.success && result.data) {
+              setColorFolders(result.data);
+               if (result.data.length === 0) {
+                 console.log(`No frame folders found for ${selectedMovieId}.`);
+                 // Optionally set a specific message if needed, but might be handled by empty UI
+               }
+            } else {
+              console.error("Error fetching color folders:", result.error);
+              setError(result.error || 'Failed to load frame data.');
+            }
+          } catch (fetchError) {
+            console.error("Exception fetching color folders:", fetchError);
+            setError('An error occurred while fetching frame data.');
+          } finally {
+            setIsLoadingFolders(false);
+          }
+        };
+        fetchFolders();
+
       } else {
-        // This case might happen if the data source changes unexpectedly
         setSelectedMovieData(null);
         setError(`Data inconsistency: Could not find data for valid ID ${selectedMovieId}.`);
         setColorExplanations({});
         setIsLoadingExplanation({});
+        setSelectedColor(null);
+        setColorFolders([]); // Clear folders on data error
       }
     } else {
-      // If selectedMovieId is cleared (e.g., due to invalid input), clear the data
       setSelectedMovieData(null);
+      setColorFolders([]); // Clear folders if no movie selected
        // Don't clear error here, it might be set by handleMovieSelect
     }
   }, [selectedMovieId]); // Re-run effect only when the validated selectedMovieId changes
@@ -59,6 +93,13 @@ export default function CinePaletteExplorer(): ReactElement {
       setError("Please enter a movie ID.");
       setSelectedMovieId(''); // Clear selection
       return;
+    }
+
+    // Basic validation for IMDb ID format (tt followed by digits)
+    if (!/^tt\d+$/.test(trimmedId)) {
+        setError(`Invalid IMDb ID format. Please use the format "tt" followed by numbers (e.g., tt0111161).`);
+        setSelectedMovieId(''); // Clear selection
+        return;
     }
 
     const movieData = getMoviePaletteById(trimmedId);
@@ -172,69 +213,130 @@ export default function CinePaletteExplorer(): ReactElement {
                <Card className="mt-6 bg-card border border-border rounded-lg shadow-sm overflow-hidden">
                   <CardHeader className="p-4 border-b border-border bg-muted/40">
                     <CardTitle className="text-xl font-semibold text-center text-foreground">Color Palette for {selectedMovieData.name}</CardTitle>
-                    <CardDescription className="text-center text-muted-foreground text-sm">Hover or click on a color swatch to learn about its significance.</CardDescription>
                   </CardHeader>
                   <CardContent className="p-4 md:p-6">
                      {/* Palette Image */}
                      {selectedMovieData.palettePath && (
                          <div className="mb-6 flex justify-center">
                              <Image
-                                // Key ensures image re-renders when path changes
-                                key={selectedMovieData.palettePath}
-                                src={selectedMovieData.palettePath} // Path is like /palettes/tt0052784.png (relative to public dir)
+                                key={`palette-${selectedMovieId}`}
+                                src={selectedMovieData.palettePath} // Use the path from data
                                 alt={`Visual color palette representation for ${selectedMovieData.name}`}
-                                width={600}
+                                width={800}
                                 height={60} // Adjust height based on typical palette image aspect ratio
                                 className="rounded border border-muted shadow-inner object-contain w-full max-w-lg" // Use object-contain
                                 priority // Load the palette image eagerly
-                                unoptimized // If palettes are simple PNGs, optimization might not be needed
-                                // Add error handling for the image itself if needed
+                                // unoptimized // If palettes are simple PNGs, optimization might not be needed
                                 onError={(e) => {
                                     console.error('Error loading palette image:', e);
                                     // Optionally show a placeholder or error message for the image
+                                    (e.target as HTMLImageElement).style.display = 'none'; // Hide broken image
+                                    // Consider adding a text fallback here
                                 }}
                              />
                          </div>
                      )}
 
-                     {/* Interactive Color Swatches */}
-                     <TooltipProvider delayDuration={100}>
-                         <div className="flex flex-wrap justify-center gap-3 md:gap-4">
-                            {selectedMovieData.colors.map((color) => (
-                                <Tooltip key={color} open={tooltipOpen[color]} onOpenChange={(open) => toggleTooltip(color, open)}>
-                                    <TooltipTrigger asChild>
-                                        <button
-                                            aria-label={`Explain color ${color}`}
-                                            onClick={() => handleColorInteraction(color)}
-                                            onMouseEnter={() => handleColorInteraction(color)} // Trigger fetch on hover too
-                                            className="w-10 h-10 md:w-12 md:h-12 rounded-full border-2 border-muted/50 hover:border-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background transition-all duration-200 ease-in-out transform hover:scale-110 shadow-md cursor-pointer"
-                                            style={{ backgroundColor: color }}
-                                         />
-                                    </TooltipTrigger>
-                                    <TooltipContent side="bottom" className="max-w-xs bg-popover text-popover-foreground border border-border shadow-lg rounded-md p-3 text-sm">
-                                        {isLoadingExplanation[color] || colorExplanations[color] === 'loading' ? (
-                                            <div className="flex items-center space-x-2">
-                                                <Loader2 className="h-4 w-4 animate-spin text-primary"/>
-                                                <span>Loading analysis...</span>
+                    {/* Interactive Color Swatches */}
+                     <div className="mb-6">
+                         <p className="text-center text-muted-foreground text-sm mb-4">Hover or click on a color swatch below to learn about its significance.</p>
+                        <TooltipProvider delayDuration={100}>
+                            <div className="flex flex-wrap justify-center gap-3 md:gap-4">
+                                {/* Use colors from movieData.colors */}
+                                {selectedMovieData.colors.map((color) => (
+                                    <Tooltip key={color} open={tooltipOpen[color]} onOpenChange={(open) => toggleTooltip(color, open)}>
+                                        <TooltipTrigger asChild>
+                                            <button
+                                                aria-label={`Explain color ${color}`}
+                                                onClick={() => handleColorInteraction(color)}
+                                                onMouseEnter={() => handleColorInteraction(color)} // Trigger fetch on hover too
+                                                className="w-10 h-10 md:w-12 md:h-12 rounded-full border-2 border-muted/50 hover:border-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background transition-all duration-200 ease-in-out transform hover:scale-110 shadow-md cursor-pointer"
+                                                style={{ backgroundColor: color }}
+                                            />
+                                        </TooltipTrigger>
+                                        <TooltipContent side="bottom" className="max-w-xs bg-popover text-popover-foreground border border-border shadow-lg rounded-md p-3 text-sm">
+                                            {isLoadingExplanation[color] || colorExplanations[color] === 'loading' ? (
+                                                <div className="flex items-center space-x-2">
+                                                    <Loader2 className="h-4 w-4 animate-spin text-primary"/>
+                                                    <span>Loading analysis...</span>
+                                                </div>
+                                            ) : colorExplanations[color] === 'error' ? (
+                                                <p className="text-destructive">Could not fetch explanation.</p>
+                                            ) : typeof colorExplanations[color] === 'string' ? (
+                                                <p>{colorExplanations[color]}</p>
+                                            ) : (
+                                                <p className="text-muted-foreground">Hover or click to load explanation...</p> // Initial state before interaction
+                                            )}
+                                        </TooltipContent>
+                                    </Tooltip>
+                                ))}
+                            </div>
+                        </TooltipProvider>
+                     </div>
+
+                       {/* Movie Frames Section */}
+                       <Card className="mt-6 bg-card border border-border rounded-lg shadow-sm overflow-hidden">
+                            <CardHeader className="p-4 border-b border-border bg-muted/40">
+                                <CardTitle className="text-xl font-semibold text-center text-foreground">Movie Frames by Color</CardTitle>
+                                <CardDescription className="text-center text-muted-foreground text-sm">Select a dominant color to see corresponding frames.</CardDescription>
+                            </CardHeader>
+                            <CardContent className="p-4 md:p-6">
+                                {isLoadingFolders ? (
+                                     <div className="flex justify-center items-center p-6">
+                                         <Loader2 className="h-6 w-6 animate-spin text-primary"/>
+                                         <span className="ml-2 text-muted-foreground">Loading frame data...</span>
+                                     </div>
+                                ) : colorFolders.length > 0 ? (
+                                    <>
+                                        <div className="flex flex-wrap justify-center gap-3 md:gap-4 mb-6">
+                                            {colorFolders.map((folderName) => (
+                                                <Button
+                                                key={folderName}
+                                                variant={selectedColor === folderName ? "default" : "outline"}
+                                                size="sm"
+                                                onClick={() => setSelectedColor(folderName)}
+                                                className={`border border-border hover:border-foreground`}
+                                                style={{ backgroundColor: selectedColor === folderName ? undefined : folderName, color: selectedColor === folderName ? undefined : '#ffffff' }} // Show color on button
+                                                >
+                                                {folderName}
+                                                </Button>
+                                            ))}
+                                        </div>
+                                        {selectedColor && (
+                                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                                                {/* Assuming 10 frames per color */}
+                                                {Array.from({ length: 10 }).map((_, index) => (
+                                                    <div key={index} className="relative aspect-video w-full bg-muted rounded overflow-hidden shadow-inner border border-border">
+                                                        <Image
+                                                        src={`/frames/${selectedMovieId}/${selectedColor}/${index}.jpg`}
+                                                        alt={`Frame ${index + 1} highlighting color ${selectedColor} from ${selectedMovieData.name}`}
+                                                        fill
+                                                        className="object-cover"
+                                                        sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, 20vw" // Optimize image loading
+                                                        // Add placeholder?
+                                                        onError={(e) => {
+                                                            console.warn(`Error loading frame image: /frames/${selectedMovieId}/${selectedColor}/${index}.jpg`);
+                                                            (e.target as HTMLImageElement).style.display = 'none'; // Hide broken image
+                                                             // Optionally show a placeholder div or icon here
+                                                        }}
+                                                        />
+                                                    </div>
+                                                ))}
                                             </div>
-                                         ) : colorExplanations[color] === 'error' ? (
-                                            <p className="text-destructive">Could not fetch explanation.</p>
-                                        ) : typeof colorExplanations[color] === 'string' ? (
-                                            <p>{colorExplanations[color]}</p>
-                                        ) : (
-                                             <p className="text-muted-foreground">Hover or click to load explanation...</p> // Initial state before interaction
                                         )}
-                                    </TooltipContent>
-                                </Tooltip>
-                            ))}
-                         </div>
-                     </TooltipProvider>
+                                     </>
+                                ) : (
+                                    <p className="text-center text-muted-foreground p-6">No representative frames found for this movie.</p>
+                                )}
+                           </CardContent>
+                       </Card>
                   </CardContent>
                </Card>
             </>
            ) : !error && !selectedMovieId ? (
             // Initial state before any selection or if input is cleared without error
             <div className="text-center py-10 text-muted-foreground">
+                 <ImageIcon className="mx-auto h-12 w-12 mb-4 text-muted-foreground/50" />
                  <p>Enter a movie ID above to begin exploring.</p>
             </div>
           ) : null /* Error state is handled by the Alert component */
@@ -244,4 +346,4 @@ export default function CinePaletteExplorer(): ReactElement {
     </div>
   );
 }
-    
+
