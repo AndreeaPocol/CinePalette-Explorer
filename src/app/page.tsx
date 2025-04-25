@@ -30,17 +30,27 @@ export default function CinePaletteExplorer(): ReactElement {
   const [tooltipOpen, setTooltipOpen] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
-    const movieData = getMoviePaletteById(selectedMovieId);
+    // Ensure the initial selection or subsequent selections always find data
+    // If the current selectedMovieId isn't valid, default to the first available movie
+    let movieData = getMoviePaletteById(selectedMovieId);
+    if (!movieData && moviePalettes.length > 0) {
+        const firstMovieId = moviePalettes[0].id;
+        setSelectedMovieId(firstMovieId); // Update state to valid ID
+        movieData = moviePalettes[0];      // Use first movie data
+    }
+
+
     if (movieData) {
       setSelectedMovieData(movieData);
       setColorExplanations({}); // Reset explanations when movie changes
       setIsLoadingExplanation({}); // Reset loading states
       setError(null); // Reset error
     } else {
+      // This case should ideally not happen if moviePalettes is not empty
       setSelectedMovieData(null);
-      setError("Movie data not found.");
+      setError("No movie data available.");
     }
-  }, [selectedMovieId]);
+  }, [selectedMovieId]); // Re-run effect when selectedMovieId changes
 
   const fetchColorExplanation = useCallback(async (color: string) => {
     if (!selectedMovieId || !color || isLoadingExplanation[color] || colorExplanations[color]) return; // Prevent multiple fetches
@@ -89,6 +99,7 @@ export default function CinePaletteExplorer(): ReactElement {
           {/* Movie Selection */}
           <div className="flex flex-col items-center space-y-2">
              <label htmlFor="movie-select" className="text-lg font-semibold text-foreground">Select Movie:</label>
+             {/* The Select component uses moviePalettes from src/data/movie-palettes.ts to populate options */}
             <Select value={selectedMovieId} onValueChange={setSelectedMovieId}>
               <SelectTrigger id="movie-select" className="w-full max-w-md text-base bg-background border-input ring-offset-background focus:ring-ring" aria-label="Select a movie">
                 <SelectValue placeholder="Select a movie..." />
@@ -145,6 +156,8 @@ export default function CinePaletteExplorer(): ReactElement {
                      {selectedMovieData.palettePath && (
                          <div className="mb-6 flex justify-center">
                              <Image
+                                // Key ensures image re-renders when path changes
+                                key={selectedMovieData.palettePath}
                                 src={selectedMovieData.palettePath}
                                 alt={`Visual color palette representation for ${selectedMovieData.name}`}
                                 width={600}
@@ -216,5 +229,3 @@ export default function CinePaletteExplorer(): ReactElement {
     </div>
   );
 }
-
-    
