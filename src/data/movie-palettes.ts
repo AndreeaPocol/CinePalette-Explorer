@@ -38,6 +38,12 @@ export const moviePalettes: MoviePaletteData[] = [
     palettePath: "/palettes/tt0137523.png",
     colors: ["#1f2d3d", "#ecf0f1", "#e74c3c", "#95a5a6", "#34495e"] // Example colors
   },
+  {
+    id: "tt0052784",
+    name: "Ben-Hur (1959)", // Added movie name for context
+    palettePath: "/palettes/tt0052784.png",
+    colors: ["#c0a16b", "#5d3a1a", "#e74c3c", "#fdf5e6", "#465a65"] // Example colors, replace with actual
+  },
 ];
 
 export function getMoviePaletteById(id: string): MoviePaletteData | undefined {
