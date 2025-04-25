@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { moviePalettes, getMoviePaletteById, type MoviePaletteData } from '@/data/movie-palettes'; // Ensure moviePalettes is exported if needed, though getMoviePaletteById is primary now
+import { getMoviePaletteById, type MoviePaletteData } from '@/data/movie-palettes'; // Only import necessary functions/types
 import { explainColorPalette, type ExplainColorPaletteOutput } from '@/ai/flows/explain-color-palette';
 import { Info, Loader2, Search } from 'lucide-react'; // Using Loader2 for a spinning icon, Search for button
 import Image from 'next/image';
@@ -181,7 +181,7 @@ export default function CinePaletteExplorer(): ReactElement {
                              <Image
                                 // Key ensures image re-renders when path changes
                                 key={selectedMovieData.palettePath}
-                                src={selectedMovieData.palettePath}
+                                src={selectedMovieData.palettePath} // Path is like /palettes/tt0052784.png (relative to public dir)
                                 alt={`Visual color palette representation for ${selectedMovieData.name}`}
                                 width={600}
                                 height={60} // Adjust height based on typical palette image aspect ratio
