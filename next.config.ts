@@ -16,6 +16,18 @@ const nextConfig: NextConfig = {
         port: '',
         pathname: '/**',
       },
+      {
+        protocol: 'https',
+        hostname: 'www.imdb.com', // Added for potential future use, although unlikely for video
+        port: '',
+        pathname: '/**',
+      },
+       {
+        protocol: 'https',
+        hostname: 'm.media-amazon.com', // IMDB images are often hosted here
+        port: '',
+        pathname: '/images/**',
+      },
     ],
   },
 };
