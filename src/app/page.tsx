@@ -12,7 +12,6 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { getMoviePaletteById, type MoviePaletteData } from '@/data/movie-palettes'; // Only import necessary functions/types
 import { explainColorPalette, type ExplainColorPaletteOutput } from '@/ai/flows/explain-color-palette';
 import { Info, Loader2, Search, Image as ImageIcon } from 'lucide-react'; // Using Loader2 for a spinning icon, Search for button
-// Removed: import { readdir } from "fs/promises";
 import Image from 'next/image';
 import { getColorFrameFolders, type GetColorFrameFoldersOutput } from '@/actions/get-color-frames'; // Import the server action
 
@@ -38,9 +37,10 @@ export default function CinePaletteExplorer(): ReactElement {
       const movieData = getMoviePaletteById(selectedMovieId);
       if (movieData) {
         setSelectedMovieData(movieData);
-        // setColorExplanations({}); // Reset explanations
-        // setIsLoadingExplanation({}); // Reset loading states
-        // setSelectedColor(null); // Reset selected color
+        // Reset state for the new movie
+        setColorExplanations({});
+        setIsLoadingExplanation({});
+        setSelectedColor(null); // Reset selected color
         setError(null); // Clear previous errors
 
         // Fetch color folders using the server action
@@ -206,15 +206,6 @@ export default function CinePaletteExplorer(): ReactElement {
                  </a>
                  <p className="text-xs text-muted-foreground mt-3">(IMDb embedding restrictions prevent direct display)</p>
               </div>
-              {/* Display palette path */}
-              {selectedMovieData.palettePath && (
-                <div className="mt-4 text-center text-muted-foreground">
-                  <p>
-                    Palette Path: <code className="bg-muted px-2 py-1 rounded">{selectedMovieData.palettePath}</code>
-                  </p>
-                </div>
-              )}
-
 
               {/* Color Palette Display */}
                <Card className="mt-6 bg-card border border-border rounded-lg shadow-sm overflow-hidden">
@@ -227,7 +218,7 @@ export default function CinePaletteExplorer(): ReactElement {
                          <div className="mb-6 flex justify-center">
                              <Image
                                 key={`palette-${selectedMovieId}`}
-                                src={selectedMovieData.palettePath} // Use the path from data
+                                src={selectedMovieData.palettePath} // Use the path from data (relative to /public)
                                 alt={`Visual color palette representation for ${selectedMovieData.name}`}
                                 width={800}
                                 height={60} // Adjust height based on typical palette image aspect ratio
@@ -235,8 +226,8 @@ export default function CinePaletteExplorer(): ReactElement {
                                 priority // Load the palette image eagerly
                                 // unoptimized // If palettes are simple PNGs, optimization might not be needed
                                 onError={(e) => {
-                                    console.error('Error loading palette image:', e);
-                                    console.error(selectedMovieData.palettePath);
+                                    console.error('Error loading palette image:', e); // Keep error logging
+                                    console.error("Palette path:", selectedMovieData.palettePath); // Log the problematic path
                                     // Optionally show a placeholder or error message for the image
                                     (e.target as HTMLImageElement).style.display = 'none'; // Hide broken image
                                     // Consider adding a text fallback here
@@ -279,7 +270,7 @@ export default function CinePaletteExplorer(): ReactElement {
                                                 {Array.from({ length: 10 }).map((_, index) => (
                                                     <div key={index} className="relative aspect-video w-full bg-muted rounded overflow-hidden shadow-inner border border-border">
                                                         <Image
-                                                        src={`/public/frames/${selectedMovieId}/${selectedColor}/${index}.jpg`}
+                                                        src={`/frames/${selectedMovieId}/${selectedColor}/${index}.jpg`} // Corrected path, remove /public
                                                         alt={`Frame ${index + 1} highlighting color ${selectedColor} from ${selectedMovieData.name}`}
                                                         fill
                                                         className="object-cover"
