@@ -41,10 +41,7 @@ export async function getColorFrameFolders(input: {
 
     try {
       const dirEntries = await readdir(movieFramesPath, { withFileTypes: true });
-      const colorFolders = dirEntries
-        .filter(
-          (entry) =>
-            entry.isDirectory() && /^#[0-9a-fA-F]{6}$/.test(entry.name) // Check if it's a directory and matches hex format
+      const colorFolders = dirEntries.filter((entry) => entry.isDirectory()
         )
         .map((entry) => entry.name); // Extract folder names
 

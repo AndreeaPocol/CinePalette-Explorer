@@ -1,3 +1,4 @@
+
 "use client";
 
 import type { ReactElement } from 'react';
@@ -11,12 +12,13 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { getMoviePaletteById, type MoviePaletteData } from '@/data/movie-palettes'; // Only import necessary functions/types
 import { explainColorPalette, type ExplainColorPaletteOutput } from '@/ai/flows/explain-color-palette';
-import { Info, Loader2, Search, Image as ImageIcon } from 'lucide-react'; // Using Loader2 for a spinning icon, Search for button
+import { Info, Loader2, Search, Image as ImageIcon, AlertCircle } from 'lucide-react'; // Using Loader2 for a spinning icon, Search for button, AlertCircle for error
 import Image from 'next/image';
 import { getColorFrameFolders, type GetColorFrameFoldersOutput } from '@/actions/get-color-frames'; // Import the server action
 
 // Define a type for the color explanations state
 type ColorExplanations = Record<string, string | null | 'loading' | 'error'>; // color hex -> explanation, loading, error or null if not fetched
+type FrameErrorState = Record<string, boolean>; // key: `${color}-${index}`, value: boolean
 
 export default function CinePaletteExplorer(): ReactElement {
   const [inputValue, setInputValue] = useState<string>(''); // State for the input field
@@ -29,6 +31,8 @@ export default function CinePaletteExplorer(): ReactElement {
   const [isLoadingFolders, setIsLoadingFolders] = useState<boolean>(false); // State for loading folders
   const [selectedColor, setSelectedColor] = useState<string | null>(null);
   const [tooltipOpen, setTooltipOpen] = useState<Record<string, boolean>>({});
+  const [paletteImageError, setPaletteImageError] = useState<boolean>(false);
+  const [frameErrors, setFrameErrors] = useState<FrameErrorState>({}); // State to track frame image errors
 
 
   // Effect to fetch movie data and color folders when a *valid* selectedMovieId is set
@@ -42,6 +46,8 @@ export default function CinePaletteExplorer(): ReactElement {
         setIsLoadingExplanation({});
         setSelectedColor(null); // Reset selected color
         setError(null); // Clear previous errors
+        setPaletteImageError(false); // Reset palette image error
+        setFrameErrors({}); // Reset frame errors
 
         // Fetch color folders using the server action
         const fetchFolders = async () => {
@@ -75,11 +81,15 @@ export default function CinePaletteExplorer(): ReactElement {
         setIsLoadingExplanation({});
         setSelectedColor(null);
         setColorFolders([]); // Clear folders on data error
+        setPaletteImageError(false);
+        setFrameErrors({});
       }
     } else {
       setSelectedMovieData(null);
       setColorFolders([]); // Clear folders if no movie selected
        // Don't clear error here, it might be set by handleMovieSelect
+       setPaletteImageError(false);
+       setFrameErrors({});
     }
   }, [selectedMovieId]); // Re-run effect only when the validated selectedMovieId changes
 
@@ -155,6 +165,19 @@ export default function CinePaletteExplorer(): ReactElement {
 
   const videoUrl = selectedMovieId ? `https://www.imdb.com/title/${selectedMovieId}/` : '';
 
+  const handlePaletteImageError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
+      console.error('Error loading palette image:', selectedMovieData?.palettePath, e);
+      setPaletteImageError(true);
+      (e.target as HTMLImageElement).style.display = 'none'; // Hide broken image element
+  };
+
+  const handleFrameImageError = (color: string, index: number) => {
+     const key = `${color}-${index}`;
+     console.error(`Error loading frame image: /frames/${selectedMovieId}/${color}/${index}.jpg`);
+     setFrameErrors(prev => ({ ...prev, [key]: true }));
+  };
+
+
   return (
     <div className="container mx-auto p-4 md:p-8 min-h-screen flex flex-col items-center">
       <Card className="w-full max-w-4xl shadow-xl mb-8 bg-card text-card-foreground rounded-lg overflow-hidden border border-border">
@@ -214,7 +237,7 @@ export default function CinePaletteExplorer(): ReactElement {
                   </CardHeader>
                   <CardContent className="p-4 md:p-6">
                      {/* Palette Image */}
-                     {selectedMovieData.palettePath && (
+                     {selectedMovieData.palettePath && !paletteImageError && (
                          <div className="mb-6 flex justify-center">
                              <Image
                                 key={`palette-${selectedMovieId}`}
@@ -225,15 +248,15 @@ export default function CinePaletteExplorer(): ReactElement {
                                 className="rounded border border-muted shadow-inner object-contain w-full max-w-lg" // Use object-contain
                                 priority // Load the palette image eagerly
                                 // unoptimized // If palettes are simple PNGs, optimization might not be needed
-                                onError={(e) => {
-                                    console.error('Error loading palette image:', e); // Keep error logging
-                                    console.error("Palette path:", selectedMovieData.palettePath); // Log the problematic path
-                                    // Optionally show a placeholder or error message for the image
-                                    (e.target as HTMLImageElement).style.display = 'none'; // Hide broken image
-                                    // Consider adding a text fallback here
-                                }}
+                                onError={handlePaletteImageError}
                              />
                          </div>
+                     )}
+                     {paletteImageError && (
+                        <div className="mb-6 flex justify-center items-center p-4 bg-destructive/10 border border-destructive/50 text-destructive rounded-md text-sm">
+                            <AlertCircle className="h-5 w-5 mr-2"/>
+                            Could not load the color palette image. Please ensure the file exists at the correct path.
+                        </div>
                      )}
 
                        {/* Movie Frames Section */}
@@ -267,23 +290,31 @@ export default function CinePaletteExplorer(): ReactElement {
                                         {selectedColor && (
                                             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
                                                 {/* Assuming 10 frames per color */}
-                                                {Array.from({ length: 10 }).map((_, index) => (
-                                                    <div key={index} className="relative aspect-video w-full bg-muted rounded overflow-hidden shadow-inner border border-border">
-                                                        <Image
-                                                        src={`/frames/${selectedMovieId}/${selectedColor}/${index}.jpg`} // Corrected path, remove /public
-                                                        alt={`Frame ${index + 1} highlighting color ${selectedColor} from ${selectedMovieData.name}`}
-                                                        fill
-                                                        className="object-cover"
-                                                        sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, 20vw" // Optimize image loading
-                                                        // Add placeholder?
-                                                        onError={(e) => {
-                                                            console.warn(`Error loading frame image: /frames/${selectedMovieId}/${selectedColor}/${index}.jpg`);
-                                                            (e.target as HTMLImageElement).style.display = 'none'; // Hide broken image
-                                                             // Optionally show a placeholder div or icon here
-                                                        }}
-                                                        />
-                                                    </div>
-                                                ))}
+                                                {Array.from({ length: 10 }).map((_, index) => {
+                                                   const frameKey = `${selectedColor}-${index}`;
+                                                   const framePath = `/frames/${selectedMovieId}/${selectedColor}/${index}.jpg`;
+                                                   const hasError = frameErrors[frameKey];
+
+                                                   return (
+                                                      <div key={frameKey} className="relative aspect-video w-full bg-muted rounded overflow-hidden shadow-inner border border-border">
+                                                            {hasError ? (
+                                                                <div className="absolute inset-0 flex flex-col items-center justify-center text-center text-xs text-destructive p-2 bg-destructive/10">
+                                                                     <AlertCircle className="h-5 w-5 mb-1"/>
+                                                                     <span>Frame missing</span>
+                                                                </div>
+                                                            ) : (
+                                                                <Image
+                                                                    src={framePath}
+                                                                    alt={`Frame ${index + 1} highlighting color ${selectedColor} from ${selectedMovieData.name}`}
+                                                                    fill
+                                                                    className="object-cover"
+                                                                    sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, 20vw" // Optimize image loading
+                                                                    onError={() => handleFrameImageError(selectedColor, index)}
+                                                                />
+                                                            )}
+                                                       </div>
+                                                    );
+                                                })}
                                             </div>
                                         )}
                                      </>
@@ -308,3 +339,5 @@ export default function CinePaletteExplorer(): ReactElement {
     </div>
   );
 }
+
+    
