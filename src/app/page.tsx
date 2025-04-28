@@ -1,4 +1,3 @@
-
 "use client";
 
 import type { ReactElement } from 'react';
@@ -39,9 +38,9 @@ export default function CinePaletteExplorer(): ReactElement {
       const movieData = getMoviePaletteById(selectedMovieId);
       if (movieData) {
         setSelectedMovieData(movieData);
-        setColorExplanations({}); // Reset explanations
-        setIsLoadingExplanation({}); // Reset loading states
-        setSelectedColor(null); // Reset selected color
+        // setColorExplanations({}); // Reset explanations
+        // setIsLoadingExplanation({}); // Reset loading states
+        // setSelectedColor(null); // Reset selected color
         setError(null); // Clear previous errors
 
         // Fetch color folders using the server action
@@ -207,6 +206,14 @@ export default function CinePaletteExplorer(): ReactElement {
                  </a>
                  <p className="text-xs text-muted-foreground mt-3">(IMDb embedding restrictions prevent direct display)</p>
               </div>
+              {/* Display palette path */}
+              {selectedMovieData.palettePath && (
+                <div className="mt-4 text-center text-muted-foreground">
+                  <p>
+                    Palette Path: <code className="bg-muted px-2 py-1 rounded">{selectedMovieData.palettePath}</code>
+                  </p>
+                </div>
+              )}
 
 
               {/* Color Palette Display */}
@@ -229,6 +236,7 @@ export default function CinePaletteExplorer(): ReactElement {
                                 // unoptimized // If palettes are simple PNGs, optimization might not be needed
                                 onError={(e) => {
                                     console.error('Error loading palette image:', e);
+                                    console.error(selectedMovieData.palettePath);
                                     // Optionally show a placeholder or error message for the image
                                     (e.target as HTMLImageElement).style.display = 'none'; // Hide broken image
                                     // Consider adding a text fallback here
@@ -236,43 +244,6 @@ export default function CinePaletteExplorer(): ReactElement {
                              />
                          </div>
                      )}
-
-                    {/* Interactive Color Swatches */}
-                     <div className="mb-6">
-                         <p className="text-center text-muted-foreground text-sm mb-4">Hover or click on a color swatch below to learn about its significance.</p>
-                        <TooltipProvider delayDuration={100}>
-                            <div className="flex flex-wrap justify-center gap-3 md:gap-4">
-                                {/* Use colors from movieData.colors */}
-                                {selectedMovieData.colors.map((color) => (
-                                    <Tooltip key={color} open={tooltipOpen[color]} onOpenChange={(open) => toggleTooltip(color, open)}>
-                                        <TooltipTrigger asChild>
-                                            <button
-                                                aria-label={`Explain color ${color}`}
-                                                onClick={() => handleColorInteraction(color)}
-                                                onMouseEnter={() => handleColorInteraction(color)} // Trigger fetch on hover too
-                                                className="w-10 h-10 md:w-12 md:h-12 rounded-full border-2 border-muted/50 hover:border-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background transition-all duration-200 ease-in-out transform hover:scale-110 shadow-md cursor-pointer"
-                                                style={{ backgroundColor: color }}
-                                            />
-                                        </TooltipTrigger>
-                                        <TooltipContent side="bottom" className="max-w-xs bg-popover text-popover-foreground border border-border shadow-lg rounded-md p-3 text-sm">
-                                            {isLoadingExplanation[color] || colorExplanations[color] === 'loading' ? (
-                                                <div className="flex items-center space-x-2">
-                                                    <Loader2 className="h-4 w-4 animate-spin text-primary"/>
-                                                    <span>Loading analysis...</span>
-                                                </div>
-                                            ) : colorExplanations[color] === 'error' ? (
-                                                <p className="text-destructive">Could not fetch explanation.</p>
-                                            ) : typeof colorExplanations[color] === 'string' ? (
-                                                <p>{colorExplanations[color]}</p>
-                                            ) : (
-                                                <p className="text-muted-foreground">Hover or click to load explanation...</p> // Initial state before interaction
-                                            )}
-                                        </TooltipContent>
-                                    </Tooltip>
-                                ))}
-                            </div>
-                        </TooltipProvider>
-                     </div>
 
                        {/* Movie Frames Section */}
                        <Card className="mt-6 bg-card border border-border rounded-lg shadow-sm overflow-hidden">
@@ -308,7 +279,7 @@ export default function CinePaletteExplorer(): ReactElement {
                                                 {Array.from({ length: 10 }).map((_, index) => (
                                                     <div key={index} className="relative aspect-video w-full bg-muted rounded overflow-hidden shadow-inner border border-border">
                                                         <Image
-                                                        src={`/frames/${selectedMovieId}/${selectedColor}/${index}.jpg`}
+                                                        src={`/public/frames/${selectedMovieId}/${selectedColor}/${index}.jpg`}
                                                         alt={`Frame ${index + 1} highlighting color ${selectedColor} from ${selectedMovieData.name}`}
                                                         fill
                                                         className="object-cover"
@@ -346,4 +317,3 @@ export default function CinePaletteExplorer(): ReactElement {
     </div>
   );
 }
-

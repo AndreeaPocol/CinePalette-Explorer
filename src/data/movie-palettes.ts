@@ -52,7 +52,7 @@ export function getMoviePaletteById(id: string): MoviePaletteData | undefined {
   if (!id || !id.startsWith('tt')) {
     return undefined;
   }
-  return moviePalettes.find(palette => palette.id === id);
+  return moviePalettes.find(palette => palette.id === id)
 }
 
 /**
