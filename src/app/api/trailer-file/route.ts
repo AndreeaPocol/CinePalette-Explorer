@@ -39,8 +39,8 @@ export async function GET(req: NextRequest): Promise<NextResponse<TrailerFileApi
     const validatedInput = TrailerFileApiInputSchema.parse({ movieId, frameFile });
 
     // Construct paths
-    const trailersBasePath = path.join(process.cwd(), 'public', 'trailers');
-    const trailerFolderPath = path.join(trailersBasePath, validatedInput.movieId);
+    const trailersBasePath = path.join('/frames');
+    const trailerFolderPath = path.join(trailersBasePath, validatedInput.movieId, 'trailer');
 
     // Extract filename without extension from frameFile and append the expected trailer extension (assuming .png for now)
     const frameFileNameWithoutExt = path.parse(validatedInput.frameFile).name;
@@ -48,10 +48,8 @@ export async function GET(req: NextRequest): Promise<NextResponse<TrailerFileApi
     const trailerFilePath = path.join(trailerFolderPath, trailerFileName);
 
     try {
-      // Check if the trailer file exists and is accessible
-      await access(trailerFilePath);
       // If access is successful, the file exists
-      return NextResponse.json({ success: true, trailer: trailerFileName });
+      return NextResponse.json({ success: true, trailer: trailerFilePath });
     } catch (err: any) {
       // If access fails with ENOENT, the file doesn't exist
       if (err.code === 'ENOENT') {

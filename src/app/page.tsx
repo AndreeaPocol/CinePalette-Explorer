@@ -255,12 +255,11 @@ export default function CinePaletteExplorer(): ReactElement {
 
       if (data.success && data.trailer) {
         // Construct the full path for the trailer image
-        const trailerPath = `/trailers/${selectedMovieId}/${data.trailer}`;
-        setTrailerImagePath(trailerPath);
+        setTrailerImagePath(data.trailer);
       } else if (!data.success) {
           console.error("Error fetching trailer file info:", data.error);
       } else {
-         console.log(`No corresponding trailer file found for frame: ${frameFile}`);
+         console.log(`No corresponding trailer file found for frame: ${data.trailer}`);
       }
     } catch (error) {
        console.error("Error calling trailer API:", error);
@@ -356,9 +355,9 @@ export default function CinePaletteExplorer(): ReactElement {
                    </DialogContent>
                 </Dialog>
 
-              {/* YouTube Video Section */}
-              <div className="w-full aspect-video rounded-lg overflow-hidden shadow-md bg-muted border border-border">
-                 {selectedMovieData.youtubeKey ? (
+                {/* YouTube Video Section */}
+                <div className="w-full aspect-video rounded-lg overflow-hidden shadow-md bg-muted border border-border">
+                    {selectedMovieData.youtubeKey ? (
                         <iframe
                             width="100%"
                             height="100%"
@@ -373,9 +372,9 @@ export default function CinePaletteExplorer(): ReactElement {
                            <p className="text-center">Youtube trailer not found for this movie</p>
                         </div>
                     )}
-              </div>
+                </div>
 
-              {/* Color Palette Section */}
+                {/* Color Palette Section */}
                <Card className="mt-6 bg-card border border-border rounded-lg shadow-sm overflow-hidden">
                   <CardHeader className="p-4 border-b border-border bg-muted/40">
                     <CardTitle className="text-xl font-semibold text-center text-foreground">Color Palette for {selectedMovieData.name}</CardTitle>
