@@ -1,67 +1,78 @@
 
 "use client";
 
-import type { ReactElement } from 'react';
-import React, { useState, useEffect, useCallback, FormEvent } from 'react';
+import type { ReactElement, SyntheticEvent } from 'react';
+import React, { useState, useEffect, useCallback, FormEvent, Fragment, } from 'react';
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { getMoviePaletteById, type MoviePaletteData } from '@/data/movie-palettes'; // Only import necessary functions/types
+import { getMoviePaletteById, type MoviePaletteData } from '@/data/movie-palettes';
 import { explainColorPalette, type ExplainColorPaletteOutput } from '@/ai/flows/explain-color-palette';
-import { Info, Loader2, Search, Image as ImageIcon, AlertCircle } from 'lucide-react'; // Using Loader2 for a spinning icon, Search for button, AlertCircle for error
+import { Info, Loader2, Search, Image as ImageIcon, AlertCircle } from 'lucide-react';
 import Image from 'next/image';
-import { getColorFrameFolders, type GetColorFrameFoldersOutput } from '@/actions/get-color-frames'; // Import the server action
+import { getColorFrameFolders, type GetColorFrameFoldersOutput } from '@/actions/get-color-frames';
+import type { FrameFilesApiOutput } from '@/app/api/frame-files/route';
+import type { TrailerFileApiOutput } from '@/app/api/trailer-file/route';
 
-// Define a type for the color explanations state
-type ColorExplanations = Record<string, string | null | 'loading' | 'error'>; // color hex -> explanation, loading, error or null if not fetched
-type FrameErrorState = Record<string, boolean>; // key: `${color}-${index}`, value: boolean
+type ColorExplanations = Record<string, string | null | 'loading' | 'error'>;
+type FrameErrorState = Record<string, boolean>;
+type FrameFiles = Record<string, string[]>; // Stores filenames for each color
 
 export default function CinePaletteExplorer(): ReactElement {
-  const [inputValue, setInputValue] = useState<string>(''); // State for the input field
-  const [selectedMovieId, setSelectedMovieId] = useState<string>(''); // Keep track of the *validated* movie ID
+  const [inputValue, setInputValue] = useState<string>('');
+  const [selectedMovieId, setSelectedMovieId] = useState<string>('');
   const [selectedMovieData, setSelectedMovieData] = useState<MoviePaletteData | null>(null);
   const [colorExplanations, setColorExplanations] = useState<ColorExplanations>({});
-  const [isLoadingExplanation, setIsLoadingExplanation] = useState<Record<string, boolean>>({}); // Track loading per color
+  const [isLoadingExplanation, setIsLoadingExplanation] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
-  const [colorFolders, setColorFolders] = useState<string[]>([]);
-  const [isLoadingFolders, setIsLoadingFolders] = useState<boolean>(false); // State for loading folders
-  const [selectedColor, setSelectedColor] = useState<string | null>(null);
+  const [colorFolders, setColorFolders] = useState<string[]>([]); // Stores color hex folder names
+  const [selectedFramePath, setSelectedFramePath] = useState<string | null>(null); // Path to the selected frame for modal
+  const [trailerImagePath, setTrailerImagePath] = useState<string | null>(null); // Path to the corresponding trailer image
+  const [isFrameModalOpen, setIsFrameModalOpen] = useState<boolean>(false);
+
+  const [isLoadingFolders, setIsLoadingFolders] = useState<boolean>(false);
+  const [selectedColor, setSelectedColor] = useState<string | null>(null); // The currently selected color folder
   const [tooltipOpen, setTooltipOpen] = useState<Record<string, boolean>>({});
   const [paletteImageError, setPaletteImageError] = useState<boolean>(false);
-  const [frameErrors, setFrameErrors] = useState<FrameErrorState>({}); // State to track frame image errors
+  const [frameErrors, setFrameErrors] = useState<Record<string, Record<string, boolean>>>({}); // Track errors per color/frame index
+  const [frameFiles, setFrameFiles] = useState<FrameFiles>({}); // Stores filenames for each color
+  const [isLoadingFrameFiles, setIsLoadingFrameFiles] = useState<Record<string, boolean>>({}); // Track loading state per color
 
 
-  // Effect to fetch movie data and color folders when a *valid* selectedMovieId is set
   useEffect(() => {
     if (selectedMovieId) {
       const movieData = getMoviePaletteById(selectedMovieId);
       if (movieData) {
         setSelectedMovieData(movieData);
-        // Reset state for the new movie
         setColorExplanations({});
         setIsLoadingExplanation({});
-        setSelectedColor(null); // Reset selected color
-        setError(null); // Clear previous errors
-        setPaletteImageError(false); // Reset palette image error
-        setFrameErrors({}); // Reset frame errors
+        setSelectedColor(null);
+        setError(null);
+        setPaletteImageError(false);
+        setFrameErrors({});
+        setFrameFiles({});
+        setIsLoadingFrameFiles({});
 
-        // Fetch color folders using the server action
         const fetchFolders = async () => {
           setIsLoadingFolders(true);
-          setColorFolders([]); // Clear old folders
+          setColorFolders([]);
           try {
             const result: GetColorFrameFoldersOutput = await getColorFrameFolders({ movieId: selectedMovieId });
             if (result.success && result.data) {
               setColorFolders(result.data);
-               if (result.data.length === 0) {
+              if (result.data.length === 0) {
                  console.log(`No frame folders found for ${selectedMovieId}.`);
-                 // Optionally set a specific message if needed, but might be handled by empty UI
                }
-            } else {
+                // Initialize frameFiles structure
+                const initialFrameFiles: FrameFiles = {};
+                result.data.forEach(color => initialFrameFiles[color] = []);
+                setFrameFiles(initialFrameFiles);
+
+              } else {
               console.error("Error fetching color folders:", result.error);
               setError(result.error || 'Failed to load frame data.');
             }
@@ -80,75 +91,102 @@ export default function CinePaletteExplorer(): ReactElement {
         setColorExplanations({});
         setIsLoadingExplanation({});
         setSelectedColor(null);
-        setColorFolders([]); // Clear folders on data error
+        setColorFolders([]);
         setPaletteImageError(false);
         setFrameErrors({});
+        setFrameFiles({});
+        setIsLoadingFrameFiles({});
       }
     } else {
       setSelectedMovieData(null);
-      setColorFolders([]); // Clear folders if no movie selected
-       // Don't clear error here, it might be set by handleMovieSelect
-       setPaletteImageError(false);
-       setFrameErrors({});
+      setColorFolders([]);
+      setPaletteImageError(false);
+      setFrameErrors({});
+      setFrameFiles({});
+      setIsLoadingFrameFiles({});
+      setSelectedColor(null); // Reset selected color when movie ID is cleared
     }
-  }, [selectedMovieId]); // Re-run effect only when the validated selectedMovieId changes
+  }, [selectedMovieId]);
 
-  // Function to handle the search/selection based on input
+  // Fetch frame filenames when a color is selected
+  useEffect(() => {
+    if (selectedColor && selectedMovieId && !frameFiles[selectedColor]?.length && !isLoadingFrameFiles[selectedColor]) {
+        const fetchFilesForColor = async () => {
+            setIsLoadingFrameFiles(prev => ({ ...prev, [selectedColor]: true }));
+            try {
+                const response = await fetch(`/api/frame-files?movieId=${selectedMovieId}&color=${selectedColor}`);
+                const data: FrameFilesApiOutput = await response.json();
+                if (data.success && data.files) {
+                    setFrameFiles(prev => ({ ...prev, [selectedColor]: data.files ?? [] }));
+                     // Initialize error state for the new frames
+                     const newErrors: Record<string, boolean> = {};
+                     (data.files ?? []).forEach(file => newErrors[file] = false);
+                     setFrameErrors(prev => ({...prev, [selectedColor]: newErrors }));
+                } else {
+                    console.error(`Error fetching files for color ${selectedColor}:`, data.error);
+                    // Optionally set an error state for this color
+                }
+            } catch (err) {
+                console.error(`Exception fetching files for color ${selectedColor}:`, err);
+                 // Optionally set an error state for this color
+            } finally {
+                setIsLoadingFrameFiles(prev => ({ ...prev, [selectedColor]: false }));
+            }
+        };
+        fetchFilesForColor();
+    }
+  }, [selectedColor, selectedMovieId, frameFiles, isLoadingFrameFiles]);
+
+
   const handleMovieSelect = (event?: FormEvent<HTMLFormElement>) => {
-    event?.preventDefault(); // Prevent form submission page reload if used in a form
+    event?.preventDefault();
     const trimmedId = inputValue.trim();
 
     if (!trimmedId) {
       setError("Please enter a movie ID.");
-      setSelectedMovieId(''); // Clear selection
+      setSelectedMovieId('');
       return;
     }
 
-    // Basic validation for IMDb ID format (tt followed by digits)
     if (!/^tt\d+$/.test(trimmedId)) {
         setError(`Invalid IMDb ID format. Please use the format "tt" followed by numbers (e.g., tt0111161).`);
-        setSelectedMovieId(''); // Clear selection
+        setSelectedMovieId('');
         return;
     }
 
     const movieData = getMoviePaletteById(trimmedId);
 
     if (movieData) {
-      setSelectedMovieId(movieData.id); // Set the valid ID, triggering the useEffect
-      setError(null); // Clear previous errors
+      setSelectedMovieId(movieData.id); // This triggers the useEffect hook
+      setError(null);
     } else {
-      setSelectedMovieId(''); // Clear selection as ID is invalid
+      setSelectedMovieId('');
       setError(`Movie ID "${trimmedId}" not found in our data. Please check the ID (e.g., tt0111161) and try again.`);
-      // No need to clear data here, useEffect handles it when selectedMovieId becomes empty
     }
   };
 
 
   const fetchColorExplanation = useCallback(async (color: string) => {
-    if (!selectedMovieId || !color || isLoadingExplanation[color] || colorExplanations[color] === 'loading') return; // Prevent multiple fetches or fetching without ID
+    if (!selectedMovieId || !color || isLoadingExplanation[color] || colorExplanations[color] === 'loading') return;
 
-    // Only refetch if explanation doesn't exist or had an error previously
     if (colorExplanations[color] === 'error' || !colorExplanations[color] ) {
         setIsLoadingExplanation(prev => ({ ...prev, [color]: true }));
-        setColorExplanations(prev => ({ ...prev, [color]: 'loading' })); // Set state to 'loading'
+        setColorExplanations(prev => ({ ...prev, [color]: 'loading' }));
 
         try {
-          const result: ExplainColorPaletteOutput = await explainColorPalette({ movieId: selectedMovieId, color });
+          const result: ExplainColorPaletteOutput = await explainColorPalette({ movieId: selectedMovieId, color: color });
           setColorExplanations(prev => ({ ...prev, [color]: result.explanation }));
         } catch (err) {
           console.error(`Error fetching explanation for color ${color} (Movie ID: ${selectedMovieId}):`, err);
-          setColorExplanations(prev => ({ ...prev, [color]: "error" })); // Indicate error state
-          // Optionally set a general error as well, or rely on the tooltip message
-          // setError(`Failed to get explanation for ${color}.`);
+          setColorExplanations(prev => ({ ...prev, [color]: "error" }));
         } finally {
           setIsLoadingExplanation(prev => ({ ...prev, [color]: false }));
         }
     }
-  }, [selectedMovieId, colorExplanations, isLoadingExplanation]); // Dependencies
+  }, [selectedMovieId, colorExplanations, isLoadingExplanation]);
 
 
   const handleColorInteraction = (color: string) => {
-    // Fetch explanation only if it hasn't been successfully fetched or isn't loading
     if (colorExplanations[color] !== 'loading' && typeof colorExplanations[color] !== 'string') {
        fetchColorExplanation(color);
     }
@@ -156,7 +194,6 @@ export default function CinePaletteExplorer(): ReactElement {
 
    const toggleTooltip = (color: string, isOpen: boolean) => {
      setTooltipOpen(prev => ({...prev, [color]: isOpen }));
-     // Fetch explanation when tooltip opens if it's not already loaded/loading/error
      if(isOpen && colorExplanations[color] !== 'loading' && typeof colorExplanations[color] !== 'string') {
         fetchColorExplanation(color);
      }
@@ -165,16 +202,55 @@ export default function CinePaletteExplorer(): ReactElement {
 
   const videoUrl = selectedMovieId ? `https://www.imdb.com/title/${selectedMovieId}/` : '';
 
-  const handlePaletteImageError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
-      console.error('Error loading palette image:', selectedMovieData?.palettePath, e);
-      setPaletteImageError(true);
-      (e.target as HTMLImageElement).style.display = 'none'; // Hide broken image element
+  const handlePaletteImageError = (e: SyntheticEvent<HTMLImageElement, Event>) => {
+      if (selectedMovieData) {
+        console.error('Error loading palette image:', selectedMovieData.palettePath, e);
+        setPaletteImageError(true);
+      }
   };
 
-  const handleFrameImageError = (color: string, index: number) => {
-     const key = `${color}-${index}`;
-     console.error(`Error loading frame image: /frames/${selectedMovieId}/${color}/${index}.jpg`);
-     setFrameErrors(prev => ({ ...prev, [key]: true }));
+  // Handler for frame image errors
+  const handleFrameImageError = (color: string, frameFile: string) => {
+     console.error(`Error loading frame image: /frames/${selectedMovieId}/${color}/${frameFile}`);
+     setFrameErrors(prev => ({
+        ...prev,
+        [color]: {
+            ...(prev[color] || {}),
+            [frameFile]: true // Mark this specific frame as having an error
+        }
+     }));
+  };
+
+  const handleFrameClick = async (frameFile: string) => {
+    if (!selectedMovieId || !selectedColor) return;
+
+    const framePath = `/frames/${selectedMovieId}/${selectedColor}/${frameFile}`;
+    setSelectedFramePath(framePath); // Set the path for the main enlarged frame
+
+    // Reset trailer image path initially
+    setTrailerImagePath(null);
+
+    try {
+      const response = await fetch(`/api/trailer-file?movieId=${selectedMovieId}&frameFile=${frameFile}`);
+      if (!response.ok) {
+        throw new Error(`API request failed with status ${response.status}`);
+      }
+      const data: TrailerFileApiOutput = await response.json();
+
+      if (data.success && data.trailer) {
+        // Construct the full path for the trailer image
+        const trailerPath = `/trailers/${selectedMovieId}/${data.trailer}`;
+        setTrailerImagePath(trailerPath);
+      } else if (!data.success) {
+          console.error("Error fetching trailer file info:", data.error);
+      } else {
+         console.log(`No corresponding trailer file found for frame: ${frameFile}`);
+      }
+    } catch (error) {
+       console.error("Error calling trailer API:", error);
+    }
+
+    setIsFrameModalOpen(true); // Open the modal
   };
 
 
@@ -186,7 +262,6 @@ export default function CinePaletteExplorer(): ReactElement {
            <CardDescription className="text-center text-muted-foreground">Enter a movie's IMDb ID (e.g., tt0111161) to explore its visual identity.</CardDescription>
         </CardHeader>
         <CardContent className="p-4 md:p-6 space-y-6">
-          {/* Movie ID Input */}
           <form onSubmit={handleMovieSelect} className="flex flex-col sm:flex-row items-center justify-center gap-3 w-full max-w-md mx-auto">
             <Label htmlFor="movie-id-input" className="sr-only">Movie ID:</Label>
             <Input
@@ -211,10 +286,61 @@ export default function CinePaletteExplorer(): ReactElement {
             </Alert>
           )}
 
-          {/* Display Area: Shows content only when a valid movie is selected */}
           {selectedMovieData ? (
-            <>
-              {/* Video Placeholder/Link */}
+             <Fragment>
+                {/* Frame Preview Modal */}
+                <Dialog open={isFrameModalOpen} onOpenChange={setIsFrameModalOpen}>
+                   <DialogContent className="sm:max-w-[600px] md:max-w-[800px] lg:max-w-[1000px] bg-card border border-border">
+                     <DialogHeader>
+                         <DialogTitle>Frame & Trailer Preview</DialogTitle>
+                         <DialogDescription>
+                            Selected frame from the movie ({selectedColor}) and its corresponding trailer shot (if available).
+                         </DialogDescription>
+                     </DialogHeader>
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                        {/* Selected Frame Display */}
+                        <div className="relative aspect-video w-full bg-muted rounded overflow-hidden shadow-inner border border-border">
+                          {selectedFramePath ? (
+                             <Image
+                                key={selectedFramePath} // Ensure re-render on change
+                                src={selectedFramePath}
+                                alt={`Selected Frame Preview`}
+                                fill
+                                className="object-contain" // Use contain to see the whole frame
+                                sizes="(max-width: 768px) 100vw, 50vw"
+                                onError={() => console.error(`Error loading selected frame: ${selectedFramePath}`)} // Basic error handling
+                             />
+                          ) : (
+                            <div className="flex items-center justify-center h-full text-muted-foreground">No frame selected.</div>
+                          )}
+                        </div>
+
+                        {/* Corresponding Trailer Image Display */}
+                        <div className="relative aspect-video w-full bg-muted rounded overflow-hidden shadow-inner border border-border">
+                           {trailerImagePath ? (
+                             <Image
+                               key={trailerImagePath} // Ensure re-render on change
+                               src={trailerImagePath}
+                               alt={`Corresponding Trailer Frame`}
+                               fill
+                               className="object-contain" // Use contain to see the whole frame
+                               sizes="(max-width: 768px) 100vw, 50vw"
+                               onError={() => console.warn(`Trailer image not found or failed to load: ${trailerImagePath}`)} // Warn instead of error
+                             />
+                           ) : (
+                              <div className="flex items-center justify-center h-full text-muted-foreground">
+                                Corresponding trailer frame not available.
+                              </div>
+                           )}
+                        </div>
+                     </div>
+                     <DialogFooter className="mt-4">
+                         <Button type="button" variant="outline" onClick={() => setIsFrameModalOpen(false)}>Close</Button>
+                     </DialogFooter>
+                   </DialogContent>
+                </Dialog>
+
+              {/* IMDB Link Section */}
               <div className="aspect-video w-full rounded-lg overflow-hidden shadow-md bg-muted flex flex-col items-center justify-center text-center p-4 border border-border">
                  <h3 className="text-lg font-semibold mb-2 text-foreground">{selectedMovieData.name}</h3>
                  <p className="text-sm text-muted-foreground mb-4">Visuals are best experienced directly.</p>
@@ -230,24 +356,22 @@ export default function CinePaletteExplorer(): ReactElement {
                  <p className="text-xs text-muted-foreground mt-3">(IMDb embedding restrictions prevent direct display)</p>
               </div>
 
-              {/* Color Palette Display */}
+              {/* Color Palette Section */}
                <Card className="mt-6 bg-card border border-border rounded-lg shadow-sm overflow-hidden">
                   <CardHeader className="p-4 border-b border-border bg-muted/40">
                     <CardTitle className="text-xl font-semibold text-center text-foreground">Color Palette for {selectedMovieData.name}</CardTitle>
                   </CardHeader>
                   <CardContent className="p-4 md:p-6">
-                     {/* Palette Image */}
                      {selectedMovieData.palettePath && !paletteImageError && (
                          <div className="mb-6 flex justify-center">
                              <Image
-                                key={`palette-${selectedMovieId}`}
-                                src={selectedMovieData.palettePath} // Use the path from data (relative to /public)
+                                key={`palette-${selectedMovieId}`} // Add key for potential re-renders
+                                src={selectedMovieData.palettePath}
                                 alt={`Visual color palette representation for ${selectedMovieData.name}`}
-                                width={800}
-                                height={60} // Adjust height based on typical palette image aspect ratio
+                                width={800} // Adjust width as needed
+                                height={60} // Adjust height as needed
                                 className="rounded border border-muted shadow-inner object-contain w-full max-w-lg" // Use object-contain
-                                priority // Load the palette image eagerly
-                                // unoptimized // If palettes are simple PNGs, optimization might not be needed
+                                priority // Load palette image sooner
                                 onError={handlePaletteImageError}
                              />
                          </div>
@@ -255,11 +379,11 @@ export default function CinePaletteExplorer(): ReactElement {
                      {paletteImageError && (
                         <div className="mb-6 flex justify-center items-center p-4 bg-destructive/10 border border-destructive/50 text-destructive rounded-md text-sm">
                             <AlertCircle className="h-5 w-5 mr-2"/>
-                            Could not load the color palette image. Please ensure the file exists at the correct path.
+                            Could not load the color palette image. Please ensure the file exists at {selectedMovieData.palettePath}.
                         </div>
                      )}
 
-                       {/* Movie Frames Section */}
+                      {/* Frames by Color Section */}
                        <Card className="mt-6 bg-card border border-border rounded-lg shadow-sm overflow-hidden">
                             <CardHeader className="p-4 border-b border-border bg-muted/40">
                                 <CardTitle className="text-xl font-semibold text-center text-foreground">Movie Frames by Color</CardTitle>
@@ -273,50 +397,74 @@ export default function CinePaletteExplorer(): ReactElement {
                                      </div>
                                 ) : colorFolders.length > 0 ? (
                                     <>
-                                        <div className="flex flex-wrap justify-center gap-3 md:gap-4 mb-6">
+                                        {/* Color Selector Buttons */}
+                                        <div className="flex flex-wrap justify-center gap-2 md:gap-3 mb-6">
                                             {colorFolders.map((folderName) => (
                                                 <Button
                                                 key={folderName}
                                                 variant={selectedColor === folderName ? "default" : "outline"}
                                                 size="sm"
                                                 onClick={() => setSelectedColor(folderName)}
-                                                className={`border border-border hover:border-foreground`}
-                                                style={{ backgroundColor: selectedColor === folderName ? undefined : folderName, color: selectedColor === folderName ? undefined : '#ffffff' }} // Show color on button
+                                                className={`border hover:border-foreground transition-colors duration-150 rounded-md shadow-sm ${selectedColor !== folderName ? 'text-white' : ''}`} // Use white text on colored background
+                                                style={{ backgroundColor: selectedColor === folderName ? undefined : folderName }} // Apply background color directly
+                                                aria-pressed={selectedColor === folderName}
                                                 >
                                                 {folderName}
                                                 </Button>
                                             ))}
                                         </div>
-                                        {selectedColor && (
-                                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-                                                {/* Assuming 10 frames per color */}
-                                                {Array.from({ length: 10 }).map((_, index) => {
-                                                   const frameKey = `${selectedColor}-${index}`;
-                                                   const framePath = `/frames/${selectedMovieId}/${selectedColor}/${index}.jpg`;
-                                                   const hasError = frameErrors[frameKey];
 
-                                                   return (
-                                                      <div key={frameKey} className="relative aspect-video w-full bg-muted rounded overflow-hidden shadow-inner border border-border">
-                                                            {hasError ? (
-                                                                <div className="absolute inset-0 flex flex-col items-center justify-center text-center text-xs text-destructive p-2 bg-destructive/10">
-                                                                     <AlertCircle className="h-5 w-5 mb-1"/>
-                                                                     <span>Frame missing</span>
-                                                                </div>
-                                                            ) : (
-                                                                <Image
-                                                                    src={framePath}
-                                                                    alt={`Frame ${index + 1} highlighting color ${selectedColor} from ${selectedMovieData.name}`}
-                                                                    fill
-                                                                    className="object-cover"
-                                                                    sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, 20vw" // Optimize image loading
-                                                                    onError={() => handleFrameImageError(selectedColor, index)}
-                                                                />
-                                                            )}
-                                                       </div>
-                                                    );
-                                                })}
+                                        {/* Frame Grid */}
+                                        {selectedColor && (
+                                            isLoadingFrameFiles[selectedColor] ? (
+                                                 <div className="flex justify-center items-center p-6">
+                                                     <Loader2 className="h-5 w-5 animate-spin text-primary"/>
+                                                     <span className="ml-2 text-muted-foreground text-sm">Loading frames for {selectedColor}...</span>
+                                                 </div>
+                                            ) : (
+                                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 md:gap-3">
+                                                {(frameFiles[selectedColor] && frameFiles[selectedColor].length > 0) ? (
+                                                    frameFiles[selectedColor].map((file) => {
+                                                        if(!selectedMovieId || !selectedColor) return null;
+                                                        const framePath = `/frames/${selectedMovieId}/${selectedColor}/${file}`;
+                                                        const hasError = frameErrors[selectedColor]?.[file] ?? false;
+
+                                                        return (
+                                                           <div
+                                                              key={file}
+                                                              className={`relative aspect-video w-full bg-muted rounded overflow-hidden shadow-inner border border-border group ${hasError ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:ring-2 hover:ring-primary hover:ring-offset-2 transition-all'}`}
+                                                              onClick={() => !hasError && handleFrameClick(file)}
+                                                              role="button"
+                                                              tabIndex={0} // Make it focusable
+                                                              aria-label={`View frame ${file}`}
+                                                              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { !hasError && handleFrameClick(file); }}} // Keyboard accessibility
+                                                            >
+                                                                 {!hasError ? (
+                                                                    <Image
+                                                                        src={framePath}
+                                                                        alt={`Frame ${file} highlighting color ${selectedColor} from ${selectedMovieData.name}`}
+                                                                        fill // Use fill for responsive images
+                                                                        className="object-cover transition-transform duration-200 group-hover:scale-105" // Subtle hover effect
+                                                                        sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, 20vw" // Optimize image loading
+                                                                        onError={() => handleFrameImageError(selectedColor, file)}
+                                                                        priority={false} // Only prioritize above-the-fold images
+                                                                     />
+                                                                 ) : (
+                                                                     <div className="flex items-center justify-center h-full bg-destructive/10">
+                                                                        <AlertCircle className="h-6 w-6 text-destructive" />
+                                                                     </div>
+                                                                 )}
+                                                           </div>
+                                                        );
+                                                    })
+                                                ) : (
+                                                    <div className="col-span-full text-center text-muted-foreground p-6">
+                                                        No representative frames found for the color {selectedColor}.
+                                                    </div>
+                                                )}
                                             </div>
-                                        )}
+                                        )
+                                      )}
                                      </>
                                 ) : (
                                     <p className="text-center text-muted-foreground p-6">No representative frames found for this movie.</p>
@@ -325,19 +473,20 @@ export default function CinePaletteExplorer(): ReactElement {
                        </Card>
                   </CardContent>
                </Card>
-            </>
-           ) : !error && !selectedMovieId ? (
-            // Initial state before any selection or if input is cleared without error
+
+           </Fragment>
+          ) : !error && !selectedMovieId ? (
+            // Initial state message
             <div className="text-center py-10 text-muted-foreground">
                  <ImageIcon className="mx-auto h-12 w-12 mb-4 text-muted-foreground/50" />
                  <p>Enter a movie ID above to begin exploring.</p>
             </div>
-          ) : null /* Error state is handled by the Alert component */
+          ) : null // Render nothing if error exists but no movie data (error is shown above)
           }
         </CardContent>
       </Card>
     </div>
   );
-}
+};
 
     
