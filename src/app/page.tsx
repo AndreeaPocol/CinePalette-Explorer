@@ -42,6 +42,18 @@ export default function CinePaletteExplorer(): ReactElement {
   const [frameFiles, setFrameFiles] = useState<FrameFiles>({}); // Stores filenames for each color
   const [isLoadingFrameFiles, setIsLoadingFrameFiles] = useState<Record<string, boolean>>({}); // Track loading state per color
 
+  // Define the desired order of colors
+  const colorOrder = [
+    'red',
+    'orange',
+    'yellow',
+    'green',
+    'cyan',
+    'blue',
+    'purple',
+    'pink',
+    'trailer'
+  ];
 
   useEffect(() => {
     if (selectedMovieId) {
@@ -63,7 +75,11 @@ export default function CinePaletteExplorer(): ReactElement {
           try {
             const result: GetColorFrameFoldersOutput = await getColorFrameFolders({ movieId: selectedMovieId });
             if (result.success && result.data) {
-              setColorFolders(result.data);
+                // Sort the received colors based on the defined order, default to original if not in list.
+                const sortedColors = result.data.sort((a, b) => {
+                    return colorOrder.indexOf(a) - colorOrder.indexOf(b);
+                });
+              setColorFolders(sortedColors);
               if (result.data.length === 0) {
                  console.log(`No frame folders found for ${selectedMovieId}.`);
                }
