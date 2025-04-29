@@ -2,9 +2,9 @@
 "use client";
 
 import type { ReactElement, SyntheticEvent } from 'react';
-import React, { useState, useEffect, useCallback, FormEvent, Fragment } from 'react';
+import React, { useState, useEffect, useCallback, FormEvent, Fragment, useRef } from 'react';
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button"; // Import Button component
+import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -14,7 +14,7 @@ import { explainColorPalette, type ExplainColorPaletteOutput } from '@/ai/flows/
 import { Info, Loader2, Search, Image as ImageIcon, AlertCircle } from 'lucide-react';
 import Image from 'next/image';
 import { getColorFrameFolders, type GetColorFrameFoldersOutput } from '@/actions/get-color-frames';
-import { getColorAtPixel } from '@/lib/color-utils';
+import { getColorAtPixel, hexToHsv } from '@/lib/color-utils';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import type { FrameFilesApiOutput } from '@/app/api/frame-files/route';
 import type { TrailerFileApiOutput } from '@/app/api/trailer-file/route';
@@ -30,6 +30,7 @@ export default function CinePaletteExplorer(): ReactElement {
   const [selectedMovieData, setSelectedMovieData] = useState<MoviePaletteData | null>(null);
   const [colorExplanations, setColorExplanations] = useState<ColorExplanations>({});
   const [isLoadingExplanation, setIsLoadingExplanation] = useState<Record<string, boolean>>({});
+  const paletteImageRef = useRef<HTMLImageElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [colorFolders, setColorFolders] = useState<string[]>([]); // Stores color hex folder names
   const [selectedFramePath, setSelectedFramePath] = useState<string | null>(null); // Path to the selected frame for modal
@@ -55,6 +56,7 @@ export default function CinePaletteExplorer(): ReactElement {
     'pink',
     'trailer'
   ];
+
 
   useEffect(() => {
     if (selectedMovieId) {
@@ -225,15 +227,65 @@ export default function CinePaletteExplorer(): ReactElement {
   // Handle the click on the color palette
   const handlePaletteClick = (event: React.MouseEvent<HTMLImageElement, MouseEvent>) => {
     if (!selectedMovieData?.palettePath) return;
-    const img = event.currentTarget;
-    const rect = img.getBoundingClientRect();
+    const img = paletteImageRef.current;
+    if (!img) return;
+        const rect = img.getBoundingClientRect();
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
-    const colorHex = getColorAtPixel(img, x, y); // Get the color at the clicked pixel
-    const clickedColor = colorHex.toLowerCase(); // Convert to lowercase for comparison
 
-    if (colorFolders.includes(clickedColor)) {
-        setSelectedColor(clickedColor);
+    const colorHex = getColorAtPixel(img, x, y);    
+
+    const hsv = hexToHsv(colorHex);
+
+    const hsvToColorMap: Record<string, [number, number, number][][]> = {
+      'red': [[[0, 160, 50], [9, 255, 255]], [[166, 90, 50], [180, 255, 255]]],
+      'orange': [[[10, 196, 110], [20, 255, 255]]],
+      'yellow': [[[21, 90, 50], [35, 255, 255]]],
+      'green': [[[36, 90, 50], [75, 255, 255]]],
+      'cyan': [[[76, 90, 50], [95, 255, 255]]],
+      'blue': [[[96, 90, 50], [125, 255, 255]]],
+      'purple': [[[126, 90, 50], [145, 255, 255]]],
+      'pink': [[[146, 90, 50], [165, 255, 255]]],
+    };
+
+    let foundColor: string | null = null;
+
+    // Function to check if the HSV value is within the given range
+    const isWithinRange = (hsvValue: number, sValue: number, vValue: number, range: [number, number, number][]): boolean => {
+      const [min, max] = range;
+      const [minH, minS, minV] = min;
+      const [maxH, maxS, maxV] = max;
+
+      return hsvValue >= minH && hsvValue <= maxH && sValue >= minS && sValue <= maxS && vValue >= minV && vValue <= maxV;
+    };
+
+    // Check the color in the map
+    for (const colorName in hsvToColorMap) {
+      const ranges = hsvToColorMap[colorName];
+      let colorMatch = false;
+      
+      for (const rangeGroup of ranges) {
+          if (rangeGroup.length === 2) {
+              if (isWithinRange(hsv.h, hsv.s, hsv.v, rangeGroup)) {
+                colorMatch = true;
+                  break;
+              }
+          } else if(rangeGroup.length === 1) {
+            if (isWithinRange(hsv.h, hsv.s, hsv.v, rangeGroup)) {
+              colorMatch = true;
+                break;
+            }
+          }
+      }
+
+      if (colorMatch) {
+        foundColor = colorName;
+        break;
+      }
+    }
+
+    if (foundColor && colorFolders.includes(foundColor)) {
+      setSelectedColor(foundColor);
       }
   };
 
@@ -363,7 +415,7 @@ export default function CinePaletteExplorer(): ReactElement {
                            )}
                         </div>
                      </div>
-                     <DialogFooter className="mt-4">
+                     <DialogFooter className="mt-4" >
                        <Button variant="outline" onClick={() => setIsFrameModalOpen(false)}>Close</Button>
                      </DialogFooter>
                    </DialogContent>
@@ -404,6 +456,7 @@ export default function CinePaletteExplorer(): ReactElement {
                                 height={60} // Adjust height as needed
                                 className="rounded border border-muted shadow-inner object-contain w-full max-w-lg" // Use object-contain
                                 priority
+                                ref={paletteImageRef}
                                 onError={handlePaletteImageError}
                                 onClick={handlePaletteClick}
                              />
