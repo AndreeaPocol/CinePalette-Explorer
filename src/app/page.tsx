@@ -340,20 +340,23 @@ export default function CinePaletteExplorer(): ReactElement {
                    </DialogContent>
                 </Dialog>
 
-              {/* IMDB Link Section */}
-              <div className="aspect-video w-full rounded-lg overflow-hidden shadow-md bg-muted flex flex-col items-center justify-center text-center p-4 border border-border">
-                 <h3 className="text-lg font-semibold mb-2 text-foreground">{selectedMovieData.name}</h3>
-                 <p className="text-sm text-muted-foreground mb-4">Visuals are best experienced directly.</p>
-                 <a
-                    href={videoUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-primary-foreground bg-primary hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-ring"
-                    aria-label={`View ${selectedMovieData.name} on IMDB (opens in new tab)`}
-                  >
-                    View on IMDB
-                 </a>
-                 <p className="text-xs text-muted-foreground mt-3">(IMDb embedding restrictions prevent direct display)</p>
+              {/* YouTube Video Section */}
+              <div className="w-full aspect-video rounded-lg overflow-hidden shadow-md bg-muted border border-border">
+                 {selectedMovieData.youtubeKey ? (
+                        <iframe
+                            width="100%"
+                            height="100%"
+                            src={`https://www.youtube.com/embed/${selectedMovieData.youtubeKey}`}
+                            title={`${selectedMovieData.name} Trailer`}
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                            allowFullScreen
+                            className="w-full h-full"
+                        />
+                    ) : (
+                        <div className="flex items-center justify-center h-full text-muted-foreground">
+                           <p className="text-center">Youtube trailer not found for this movie</p>
+                        </div>
+                    )}
               </div>
 
               {/* Color Palette Section */}
