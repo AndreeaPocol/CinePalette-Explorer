@@ -28,6 +28,34 @@ export const moviePalettes: MoviePaletteData[] = [
     palettePath: "/palettes/tt0190590.png",
     framesPath:  "/frames/tt0190590/",
     youtubeKey: "G7nNDKrTrag",
+  },
+  {
+    id: "tt0317705",
+    name: "The Incredibles",
+    palettePath: "/palettes/tt0317705.png",
+    framesPath:  "/frames/tt0317705/",
+    youtubeKey: "UaGUdNJdRQ",
+  },
+  {
+    id: "tt1483013",
+    name: "Oblivion",
+    palettePath: "/palettes/tt1483013.png",
+    framesPath:  "/frames/tt1483013/",
+    youtubeKey: "tx6_JMDFfWI",
+  },
+  {
+    id: "tt0240772",
+    name: "Ocean's Eleven",
+    palettePath: "/palettes/tt0240772.png",
+    framesPath:  "/frames/tt0240772/",
+    youtubeKey: "ImMGNQ2OEjo",
+  },
+  {
+    id: "tt0081505",
+    name: "The Shining",
+    palettePath: "/palettes/tt0081505.png",
+    framesPath:  "/frames/tt0081505/",
+    youtubeKey: "S014oGZiSdI",
   }
 ];
 
