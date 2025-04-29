@@ -24,27 +24,27 @@ type FrameErrorState = Record<string, boolean>;
 type FrameFiles = Record<string, string[]>; // Stores filenames for each color
 
 export default function CinePaletteExplorer(): ReactElement {
-  const [isFrameModalOpen, setIsFrameModalOpen] = useState<boolean>(false);
-  const [inputValue, setInputValue] = useState<string>('');
-  const [selectedMovieId, setSelectedMovieId] = useState<string>('');
-  const [selectedMovieData, setSelectedMovieData] = useState<MoviePaletteData | null>(null);
-  const [colorExplanations, setColorExplanations] = useState<ColorExplanations>({});
-  const [isLoadingExplanation, setIsLoadingExplanation] = useState<Record<string, boolean>>({});
-  const paletteImageRef = useRef<HTMLImageElement>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [colorFolders, setColorFolders] = useState<string[]>([]); // Stores color hex folder names
-  const [selectedFramePath, setSelectedFramePath] = useState<string | null>(null); // Path to the selected frame for modal
-  const [trailerImagePath, setTrailerImagePath] = useState<string | null>(null);
-  const [isLoadingFolders, setIsLoadingFolders] = useState<boolean>(false);
+  const [isFrameModalOpen, setIsFrameModalOpen] = useState<boolean>(false); // State to control the visibility of the frame modal
+  const [inputValue, setInputValue] = useState<string>(''); // State to hold the user's input for movie ID or name
+  const [selectedMovieId, setSelectedMovieId] = useState<string>(''); // State to store the selected movie's ID
+  const [selectedMovieData, setSelectedMovieData] = useState<MoviePaletteData | null>(null); // State to store the data of the selected movie
+  const [colorExplanations, setColorExplanations] = useState<ColorExplanations>({}); // State to store color explanations
+  const [isLoadingExplanation, setIsLoadingExplanation] = useState<Record<string, boolean>>({}); // State to track loading status of color explanations
+  const paletteImageRef = useRef<HTMLImageElement>(null); // Ref to the palette image element
+  const [error, setError] = useState<string | null>(null); // State to store error messages
+  const [colorFolders, setColorFolders] = useState<string[]>([]); // State to store the list of color folders for the selected movie
+  const [selectedFramePath, setSelectedFramePath] = useState<string | null>(null); // State to store the path of the selected frame for display in the modal
+  const [trailerImagePath, setTrailerImagePath] = useState<string | null>(null); // State to store the path of the trailer image for display in the modal
+  const [isLoadingFolders, setIsLoadingFolders] = useState<boolean>(false); // State to track loading status of color folders
 
-  const [selectedColor, setSelectedColor] = useState<string | null>(null); // The currently selected color folder
-  const [tooltipOpen, setTooltipOpen] = useState<Record<string, boolean>>({});
-  const [paletteImageError, setPaletteImageError] = useState<boolean>(false);
-  const [frameErrors, setFrameErrors] = useState<Record<string, Record<string, boolean>>>({}); // Track errors per color/frame index
-  const [frameFiles, setFrameFiles] = useState<FrameFiles>({}); // Stores filenames for each color
-  const [isLoadingFrameFiles, setIsLoadingFrameFiles] = useState<Record<string, boolean>>({}); // Track loading state per color
+  const [selectedColor, setSelectedColor] = useState<string | null>(null); // State to store the currently selected color folder
+  const [tooltipOpen, setTooltipOpen] = useState<Record<string, boolean>>({}); // State to manage the open/close state of tooltips for each color
+  const [paletteImageError, setPaletteImageError] = useState<boolean>(false); // State to track if there's an error loading the palette image
+  const [frameErrors, setFrameErrors] = useState<Record<string, Record<string, boolean>>>({}); // State to track loading errors for each frame
+  const [frameFiles, setFrameFiles] = useState<FrameFiles>({}); // State to store the filenames of frames for each color
+  const [isLoadingFrameFiles, setIsLoadingFrameFiles] = useState<Record<string, boolean>>({}); // State to track loading status of frames for each color
 
-  // Define the desired order of colors
+  // Define the desired order of colors for display
   const colorOrder = [
     'red',
     'orange',
@@ -57,7 +57,7 @@ export default function CinePaletteExplorer(): ReactElement {
     'trailer'
   ];
 
-
+  // Fetch movie details when the selected movie ID changes
   useEffect(() => {
     if (selectedMovieId) {
       const movieData = getMoviePaletteById(selectedMovieId);
@@ -157,29 +157,23 @@ export default function CinePaletteExplorer(): ReactElement {
   }, [selectedColor, selectedMovieId, frameFiles, isLoadingFrameFiles]);
 
   const handleMovieSelect = (event?: FormEvent<HTMLFormElement>) => {
-    event?.preventDefault();
-    const trimmedId = inputValue.trim();
+    event?.preventDefault(); // Prevent the default form submission behavior
+    const trimmedInput = inputValue.trim(); // Trim whitespace from the input value
 
-    if (!trimmedId) {
-      setError("Please enter a movie ID.");
+    if (!trimmedInput) {
+      setError("Please enter a movie ID or name.");
       setSelectedMovieId('');
       return;
     }
 
-    if (!/^tt\d+$/.test(trimmedId)) {
-        setError(`Invalid IMDb ID format. Please use the format "tt" followed by numbers (e.g., tt0111161).`);
-        setSelectedMovieId('');
-        return;
-    }
-
-    const movieData = getMoviePaletteById(trimmedId);
+    const movieData = getMoviePaletteById(trimmedInput.toLowerCase());
 
     if (movieData) {
-      setSelectedMovieId(movieData.id); // This triggers the useEffect hook
-      setError(null);
+      setSelectedMovieId(movieData.id); // Set the selected movie ID, triggering the useEffect hook to fetch movie details
+      setError(null); // Clear any previous errors
     } else {
       setSelectedMovieId('');
-      setError(`Movie ID "${trimmedId}" not found in our data. Please check the ID (e.g., tt0111161) and try again.`);
+      setError(`Movie "${trimmedInput}" not found in our data. Please check the ID or name and try again.`);
     }
   };
 
@@ -224,7 +218,7 @@ export default function CinePaletteExplorer(): ReactElement {
       }
   };
 
-  // Handle the click on the color palette
+  // Handle clicks on the color palette image
   const handlePaletteClick = (event: React.MouseEvent<HTMLImageElement, MouseEvent>) => {
     if (!selectedMovieData?.palettePath) return;
     const img = paletteImageRef.current;
@@ -289,7 +283,7 @@ export default function CinePaletteExplorer(): ReactElement {
       }
   };
 
-
+  // Handle errors when loading frame images
   // Handler for frame image errors
   const handleFrameImageError = (color: string, frameFile: string) => {
      console.error(`Error loading frame image: /frames/${selectedMovieId}/${color}/${frameFile}`);
@@ -302,6 +296,7 @@ export default function CinePaletteExplorer(): ReactElement {
      }));
   };
 
+  // Handle clicks on frame images to open the frame modal
   const handleFrameClick = async (frameFile: string) => {
     if (!selectedMovieId || !selectedColor) return;
 
@@ -337,7 +332,7 @@ export default function CinePaletteExplorer(): ReactElement {
   return (
     <div className="container mx-auto p-4 md:p-8 min-h-screen flex flex-col items-center">
       <Card className="w-full max-w-4xl shadow-xl mb-8 bg-card text-card-foreground rounded-lg overflow-hidden border border-border">
-        <CardHeader className="bg-muted/40 p-4 border-b border-border">
+        <CardHeader className="bg-muted/40 p-4 border-b border-border"> 
           <CardTitle className="text-2xl font-bold text-center text-primary">CinePalette Explorer</CardTitle>
            <CardDescription className="text-center text-muted-foreground">Enter a movie's IMDb ID (e.g., tt0111161) to explore its visual identity.</CardDescription>
         </CardHeader>
@@ -349,7 +344,7 @@ export default function CinePaletteExplorer(): ReactElement {
               type="text"
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
-              placeholder="Enter IMDb ID (e.g., tt0111161)"
+              placeholder="Enter IMDb ID or name (e.g., tt0111161, Avatar)"
               className="flex-grow text-base bg-background border-input ring-offset-background focus:ring-ring"
               aria-label="Enter Movie IMDb ID"
             />
@@ -357,8 +352,6 @@ export default function CinePaletteExplorer(): ReactElement {
               <Search className="mr-2 h-4 w-4" /> Load Palette
             </Button> 
           </form>
-          
-
           {error && (
             <Alert variant="destructive" className="mt-4">
                <Info className="h-4 w-4" />
@@ -368,7 +361,7 @@ export default function CinePaletteExplorer(): ReactElement {
           )}
 
           {selectedMovieData ? (
-             <Fragment>
+             <>
                 {/* Frame Preview Modal */}
                 <Dialog open={isFrameModalOpen} onOpenChange={setIsFrameModalOpen}>
                    <DialogContent className="sm:max-w-[600px] md:max-w-[800px] lg:max-w-[1000px] bg-card border border-border">
@@ -378,7 +371,7 @@ export default function CinePaletteExplorer(): ReactElement {
                             Selected frame from the movie ({selectedColor}) and its corresponding trailer shot (if available).
                          </DialogDescription>
                      </DialogHeader>
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4"> 
                         {/* Selected Frame Display */}
                         <div className="relative aspect-video w-full bg-muted rounded overflow-hidden shadow-inner border border-border">
                           {selectedFramePath ? (
@@ -439,11 +432,10 @@ export default function CinePaletteExplorer(): ReactElement {
                         </div>
                     )}
                 </div>
-
                 {/* Color Palette Section */}
-               <Card className="mt-6 bg-card border border-border rounded-lg shadow-sm overflow-hidden">
-                  <CardHeader className="p-4 border-b border-border bg-muted/40">
-                    <CardTitle className="text-xl font-semibold text-center text-foreground">Color Palette for {selectedMovieData.name}</CardTitle>
+               <Card className="mt-6 bg-card border border-border rounded-lg shadow-sm overflow-hidden"> 
+                  <CardHeader className="p-4 border-b border-border bg-muted/40"> 
+                    <CardTitle className="text-xl font-semibold text-center text-foreground">Color Palette for {selectedMovieData.name}</CardTitle> 
                   </CardHeader>
                   <CardContent className="p-4 md:p-6">
                      {selectedMovieData.palettePath && !paletteImageError && (
@@ -468,8 +460,7 @@ export default function CinePaletteExplorer(): ReactElement {
                             Could not load the color palette image. Please ensure the file exists at {selectedMovieData.palettePath}.
                         </div>
                      )}
-
-                      {/* Frames by Color Section */}
+                       {/* Frames by Color Section */}
                        <Card className="mt-6 bg-card border border-border rounded-lg shadow-sm overflow-hidden">
                             <CardHeader className="p-4 border-b border-border bg-muted/40">
                                 <CardTitle className="text-xl font-semibold text-center text-foreground">Movie Frames by Color</CardTitle>
@@ -483,9 +474,7 @@ export default function CinePaletteExplorer(): ReactElement {
                                      </div>
                                 ) : colorFolders.length > 0 ? (
                                     <>
-
-
-                                        {/* Frame Grid */}
+                                        {/* Frame Grid */} 
                                         {selectedColor && (
                                             isLoadingFrameFiles[selectedColor] ? (
                                                  <div className="flex justify-center items-center p-6">
@@ -542,13 +531,12 @@ export default function CinePaletteExplorer(): ReactElement {
                                 )}
                            </CardContent>
                        </Card>
-                  </CardContent>
+                  </CardContent> 
                </Card>
-
-           </Fragment>
+           </>
           ) : !error && !selectedMovieId ? (
             // Initial state message
-            <div className="text-center py-10 text-muted-foreground">
+            <div className="text-center py-10 text-muted-foreground"> 
                  <ImageIcon className="mx-auto h-12 w-12 mb-4 text-muted-foreground/50" />
                  <p>Enter a movie ID above to begin exploring.</p>
             </div>

@@ -10,21 +10,21 @@ export interface MoviePaletteData {
 export const moviePalettes: MoviePaletteData[] = [
   {
     id: "tt2278388",
-    name: "The Grand Budapest Hotel (2014)",
+    name: "The Grand Budapest Hotel",
     palettePath: "/palettes/tt2278388.png",
     framesPath:  "/frames/tt2278388/",
     youtubeKey: "1Fg5iWmQjwk",
   },
   {
     id: "tt0499549",
-    name: "Avatar (2009)",
+    name: "Avatar",
     palettePath: "/palettes/tt0499549.png",
     framesPath:  "/frames/tt0499549/",
     youtubeKey: "5PSNL1qE6VY",
   },
   {
     id: "tt0190590",
-    name: "O Brother, Where Art Thou? (2000)",
+    name: "O Brother, Where Art Thou?",
     palettePath: "/palettes/tt0190590.png",
     framesPath:  "/frames/tt0190590/",
     youtubeKey: "G7nNDKrTrag",
@@ -32,16 +32,34 @@ export const moviePalettes: MoviePaletteData[] = [
 ];
 
 /**
- * Retrieves movie palette data by its IMDb ID.
- * @param id - The IMDb ID string (e.g., "tt0111161").
+ * Retrieves movie palette data by its ID or name.
+ * @param idOrName - The IMDb ID string (e.g., "tt0111161") or the movie name.
  * @returns The MoviePaletteData object if found, otherwise undefined.
  */
-export function getMoviePaletteById(id: string): MoviePaletteData | undefined {
-  // Ensure the ID format is roughly correct before searching
-  if (!id || !id.startsWith('tt')) {
-    return undefined;
+export function getMoviePaletteById(idOrName: string): MoviePaletteData | undefined {
+  // First, try to find by ID
+  if (idOrName && idOrName.startsWith('tt')) {
+      const foundById = moviePalettes.find(palette => palette.id === idOrName);
+      if(foundById){
+        return foundById;
+      }
   }
-  return moviePalettes.find(palette => palette.id === id)
+  
+  // If not found by ID, try to find by name
+  return moviePalettes.find(palette => palette.name.toLowerCase() === idOrName.toLowerCase());
+}
+
+/**
+ * Retrieves movie palette data by its name.
+ * @param name - The movie name
+ * @returns The MoviePaletteData object if found, otherwise undefined.
+ */
+export function getMoviePaletteByName(name: string): MoviePaletteData | undefined {
+    return moviePalettes.find(palette => palette.name.toLowerCase() === name.toLowerCase());
+}
+
+
+/**
 }
 
 /**
