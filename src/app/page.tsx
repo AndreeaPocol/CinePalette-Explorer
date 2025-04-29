@@ -2,11 +2,10 @@
 "use client";
 
 import type { ReactElement, SyntheticEvent } from 'react';
-import React, { useState, useEffect, useCallback, FormEvent, Fragment, } from 'react';
+import React, { useState, useEffect, useCallback, FormEvent, Fragment } from 'react';
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/ui/button"; // Import Button component
 import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -15,6 +14,8 @@ import { explainColorPalette, type ExplainColorPaletteOutput } from '@/ai/flows/
 import { Info, Loader2, Search, Image as ImageIcon, AlertCircle } from 'lucide-react';
 import Image from 'next/image';
 import { getColorFrameFolders, type GetColorFrameFoldersOutput } from '@/actions/get-color-frames';
+import { getColorAtPixel } from '@/lib/color-utils';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import type { FrameFilesApiOutput } from '@/app/api/frame-files/route';
 import type { TrailerFileApiOutput } from '@/app/api/trailer-file/route';
 
@@ -23,6 +24,7 @@ type FrameErrorState = Record<string, boolean>;
 type FrameFiles = Record<string, string[]>; // Stores filenames for each color
 
 export default function CinePaletteExplorer(): ReactElement {
+  const [isFrameModalOpen, setIsFrameModalOpen] = useState<boolean>(false);
   const [inputValue, setInputValue] = useState<string>('');
   const [selectedMovieId, setSelectedMovieId] = useState<string>('');
   const [selectedMovieData, setSelectedMovieData] = useState<MoviePaletteData | null>(null);
@@ -31,10 +33,9 @@ export default function CinePaletteExplorer(): ReactElement {
   const [error, setError] = useState<string | null>(null);
   const [colorFolders, setColorFolders] = useState<string[]>([]); // Stores color hex folder names
   const [selectedFramePath, setSelectedFramePath] = useState<string | null>(null); // Path to the selected frame for modal
-  const [trailerImagePath, setTrailerImagePath] = useState<string | null>(null); // Path to the corresponding trailer image
-  const [isFrameModalOpen, setIsFrameModalOpen] = useState<boolean>(false);
-
+  const [trailerImagePath, setTrailerImagePath] = useState<string | null>(null);
   const [isLoadingFolders, setIsLoadingFolders] = useState<boolean>(false);
+
   const [selectedColor, setSelectedColor] = useState<string | null>(null); // The currently selected color folder
   const [tooltipOpen, setTooltipOpen] = useState<Record<string, boolean>>({});
   const [paletteImageError, setPaletteImageError] = useState<boolean>(false);
@@ -62,7 +63,7 @@ export default function CinePaletteExplorer(): ReactElement {
         setSelectedMovieData(movieData);
         setColorExplanations({});
         setIsLoadingExplanation({});
-        setSelectedColor(null);
+
         setError(null);
         setPaletteImageError(false);
         setFrameErrors({});
@@ -106,7 +107,7 @@ export default function CinePaletteExplorer(): ReactElement {
         setError(`Data inconsistency: Could not find data for valid ID ${selectedMovieId}.`);
         setColorExplanations({});
         setIsLoadingExplanation({});
-        setSelectedColor(null);
+
         setColorFolders([]);
         setPaletteImageError(false);
         setFrameErrors({});
@@ -121,7 +122,7 @@ export default function CinePaletteExplorer(): ReactElement {
       setFrameFiles({});
       setIsLoadingFrameFiles({});
       setSelectedColor(null); // Reset selected color when movie ID is cleared
-    }
+  }
   }, [selectedMovieId]);
 
   // Fetch frame filenames when a color is selected
@@ -153,7 +154,6 @@ export default function CinePaletteExplorer(): ReactElement {
     }
   }, [selectedColor, selectedMovieId, frameFiles, isLoadingFrameFiles]);
 
-
   const handleMovieSelect = (event?: FormEvent<HTMLFormElement>) => {
     event?.preventDefault();
     const trimmedId = inputValue.trim();
@@ -181,7 +181,6 @@ export default function CinePaletteExplorer(): ReactElement {
     }
   };
 
-
   const fetchColorExplanation = useCallback(async (color: string) => {
     if (!selectedMovieId || !color || isLoadingExplanation[color] || colorExplanations[color] === 'loading') return;
 
@@ -201,7 +200,6 @@ export default function CinePaletteExplorer(): ReactElement {
     }
   }, [selectedMovieId, colorExplanations, isLoadingExplanation]);
 
-
   const handleColorInteraction = (color: string) => {
     if (colorExplanations[color] !== 'loading' && typeof colorExplanations[color] !== 'string') {
        fetchColorExplanation(color);
@@ -215,7 +213,6 @@ export default function CinePaletteExplorer(): ReactElement {
      }
    }
 
-
   const videoUrl = selectedMovieId ? `https://www.imdb.com/title/${selectedMovieId}/` : '';
 
   const handlePaletteImageError = (e: SyntheticEvent<HTMLImageElement, Event>) => {
@@ -224,6 +221,22 @@ export default function CinePaletteExplorer(): ReactElement {
         setPaletteImageError(true);
       }
   };
+
+  // Handle the click on the color palette
+  const handlePaletteClick = (event: React.MouseEvent<HTMLImageElement, MouseEvent>) => {
+    if (!selectedMovieData?.palettePath) return;
+    const img = event.currentTarget;
+    const rect = img.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    const colorHex = getColorAtPixel(img, x, y); // Get the color at the clicked pixel
+    const clickedColor = colorHex.toLowerCase(); // Convert to lowercase for comparison
+
+    if (colorFolders.includes(clickedColor)) {
+        setSelectedColor(clickedColor);
+      }
+  };
+
 
   // Handler for frame image errors
   const handleFrameImageError = (color: string, frameFile: string) => {
@@ -289,9 +302,10 @@ export default function CinePaletteExplorer(): ReactElement {
               aria-label="Enter Movie IMDb ID"
             />
             <Button type="submit" aria-label="Load Movie Palette">
-               <Search className="mr-2 h-4 w-4" /> Load Palette
-            </Button>
+              <Search className="mr-2 h-4 w-4" /> Load Palette
+            </Button> 
           </form>
+          
 
           {error && (
             <Alert variant="destructive" className="mt-4">
@@ -350,7 +364,7 @@ export default function CinePaletteExplorer(): ReactElement {
                         </div>
                      </div>
                      <DialogFooter className="mt-4">
-                         <Button type="button" variant="outline" onClick={() => setIsFrameModalOpen(false)}>Close</Button>
+                       <Button variant="outline" onClick={() => setIsFrameModalOpen(false)}>Close</Button>
                      </DialogFooter>
                    </DialogContent>
                 </Dialog>
@@ -389,8 +403,9 @@ export default function CinePaletteExplorer(): ReactElement {
                                 width={800} // Adjust width as needed
                                 height={60} // Adjust height as needed
                                 className="rounded border border-muted shadow-inner object-contain w-full max-w-lg" // Use object-contain
-                                priority // Load palette image sooner
+                                priority
                                 onError={handlePaletteImageError}
+                                onClick={handlePaletteClick}
                              />
                          </div>
                      )}
@@ -415,22 +430,7 @@ export default function CinePaletteExplorer(): ReactElement {
                                      </div>
                                 ) : colorFolders.length > 0 ? (
                                     <>
-                                        {/* Color Selector Buttons */}
-                                        <div className="flex flex-wrap justify-center gap-2 md:gap-3 mb-6">
-                                            {colorFolders.map((folderName) => (
-                                                <Button
-                                                key={folderName}
-                                                variant={selectedColor === folderName ? "default" : "outline"}
-                                                size="sm"
-                                                onClick={() => setSelectedColor(folderName)}
-                                                className={`border hover:border-foreground transition-colors duration-150 rounded-md shadow-sm ${selectedColor !== folderName ? 'text-white' : ''}`} // Use white text on colored background
-                                                style={{ backgroundColor: selectedColor === folderName ? undefined : folderName }} // Apply background color directly
-                                                aria-pressed={selectedColor === folderName}
-                                                >
-                                                {folderName}
-                                                </Button>
-                                            ))}
-                                        </div>
+
 
                                         {/* Frame Grid */}
                                         {selectedColor && (
@@ -454,7 +454,7 @@ export default function CinePaletteExplorer(): ReactElement {
                                                               onClick={() => !hasError && handleFrameClick(file)}
                                                               role="button"
                                                               tabIndex={0} // Make it focusable
-                                                              aria-label={`View frame ${file}`}
+                                                              aria-label={`View frame ${file}`} // Make it keyboard accessible
                                                               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { !hasError && handleFrameClick(file); }}} // Keyboard accessibility
                                                             >
                                                                  {!hasError ? (
@@ -506,5 +506,3 @@ export default function CinePaletteExplorer(): ReactElement {
     </div>
   );
 };
-
-    
