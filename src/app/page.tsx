@@ -364,8 +364,27 @@ export default function CinePaletteExplorer(): ReactElement {
       }
   };
 
+  useEffect(() => {
+    const handleScroll = () => {
+      if (window.scrollY > 200) { // Show the button after scrolling 200px down
+        setShowBackToTop(true);
+      } else {
+        setShowBackToTop(false);
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  const scrollToTop = () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   return (
-    <div className="container mx-auto p-4 md:p-8 min-h-screen flex flex-col items-center">
+    <div className="container mx-auto p-4 md:p-8 min-h-screen flex flex-col items-center relative">
+        {/* Back to Top Button */}
+        
        <Card className="w-full max-w-4xl shadow-xl mb-8 bg-card text-card-foreground rounded-lg overflow-hidden border border-border">
         <CardHeader className="bg-muted/40 p-4 border-b border-border"> 
           <CardTitle className="text-2xl font-bold text-center text-primary">CinePalette Explorer</CardTitle>
@@ -398,9 +417,48 @@ export default function CinePaletteExplorer(): ReactElement {
             {!selectedMovieData && !isBrowsing && !error && (
                  <p className="mt-4 text-center text-muted-foreground">Or, would you like to <Link href="#" className="font-medium underline underline-offset-4 hover:text-primary" onClick={handleBrowseClick}>browse</Link> a list of movies?</p>
              )}
-
+             {/* Back to Top button */}
+              {showBackToTop && (
+                 <TooltipProvider>
+                    <Tooltip>
+                       <TooltipTrigger asChild>
+                          <Button
+                              className="fixed bottom-4 right-4 z-50"
+                              variant="outline"
+                              onClick={scrollToTop}
+                              aria-label="Back to top of the page"
+                           >
+                              <ArrowUp className="h-4 w-4" />
+                           </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Back to top</TooltipContent>
+                     </Tooltip>
+                 </TooltipProvider>)}
           {selectedMovieData ? (
              <>
+             <div className="flex items-center justify-between w-full">
+                 <Button variant="link" onClick={() => {
+                    setSelectedMovieId('');
+                    setSelectedMovieData(null);
+                    setError(null);
+                    setColorExplanations({});
+                    setIsLoadingExplanation({});
+                    setIsMovieSelected(false);
+
+                    setColorFolders([]);
+                    setPaletteImageError(false);
+                    setFrameErrors({});
+                    setFrameFiles({});
+                    setIsLoadingFrameFiles({});
+                    setSelectedColor(null);
+                    setInputValue('');
+                 }} className='self-start' aria-label="Go back to the homepage">
+                    <ArrowLeft className="mr-2 h-4 w-4" /> Go back to Homepage
+                 </Button>
+                
+             </div>
+                 
+                 
                 {/* Frame Preview Modal */}
                 <Dialog open={isFrameModalOpen} onOpenChange={setIsFrameModalOpen}>
                    <DialogContent className="sm:max-w-[600px] md:max-w-[800px] lg:max-w-[1000px] bg-card border border-border">
