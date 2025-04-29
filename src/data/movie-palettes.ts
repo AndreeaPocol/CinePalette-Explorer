@@ -34,7 +34,7 @@ export const moviePalettes: MoviePaletteData[] = [
     name: "The Incredibles",
     palettePath: "/palettes/tt0317705.png",
     framesPath:  "/frames/tt0317705/",
-    youtubeKey: "UaGUdNJdRQ",
+    youtubeKey: "-UaGUdNJdRQ",
   },
   {
     id: "tt1483013",
