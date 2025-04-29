@@ -1,6 +1,7 @@
 
 "use client";
 
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, } from "@/components/ui/tooltip";
 import type { ReactElement, SyntheticEvent, ReactNode } from 'react';
 import React, { useState, useEffect, useCallback, FormEvent, useRef } from 'react';
 import { Input } from "@/components/ui/input";
@@ -17,15 +18,15 @@ import { getColorFrameFolders, type GetColorFrameFoldersOutput } from '@/actions
 import { getColorAtPixel, hexToHsv } from '@/lib/color-utils';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import type { FrameFilesApiOutput } from '@/app/api/frame-files/route';
-import type { TrailerFileApiOutput } from '@/app/api/trailer-file/route';
+import { TrailerFileApiOutput } from '@/app/api/trailer-file/route';
 import Link from "next/link";
+import { ArrowLeft, ArrowUp } from 'lucide-react';
 
 
-type MoviePaletteDataWithId = MoviePaletteData & { id: string };
+type MoviePaletteDataWithId = MoviePaletteData & { id: string }; 
 type ColorExplanations = Record<string, string | null | 'loading' | 'error'>;
 type FrameErrorState = Record<string, boolean>;
 type FrameFiles = Record<string, string[]>; // Stores filenames for each color
-
 export default function CinePaletteExplorer(): ReactElement {
   const [isFrameModalOpen, setIsFrameModalOpen] = useState<boolean>(false); // State to control the visibility of the frame modal
   const [inputValue, setInputValue] = useState<string>(''); // State to hold the user's input for movie ID or name
@@ -39,16 +40,18 @@ export default function CinePaletteExplorer(): ReactElement {
   const paletteImageRef = useRef<HTMLImageElement>(null); // Ref to the palette image element
   const [error, setError] = useState<string | null>(null); // State to store error messages
   const [colorFolders, setColorFolders] = useState<string[]>([]); // State to store the list of color folders for the selected movie
+  
   const [selectedFramePath, setSelectedFramePath] = useState<string | null>(null); // State to store the path of the selected frame for display in the modal
   const [trailerImagePath, setTrailerImagePath] = useState<string | null>(null); // State to store the path of the trailer image for display in the modal
   const [isLoadingFolders, setIsLoadingFolders] = useState<boolean>(false); // State to track loading status of color folders
 
-  const [selectedColor, setSelectedColor] = useState<string | null>(null); // State to store the currently selected color folder
+    const [selectedColor, setSelectedColor] = useState<string | null>(null); // State to store the currently selected color folder
   const [tooltipOpen, setTooltipOpen] = useState<Record<string, boolean>>({}); // State to manage the open/close state of tooltips for each color
   const [paletteImageError, setPaletteImageError] = useState<boolean>(false); // State to track if there's an error loading the palette image
   const [frameErrors, setFrameErrors] = useState<Record<string, Record<string, boolean>>>({}); // State to track loading errors for each frame
   const [frameFiles, setFrameFiles] = useState<FrameFiles>({}); // State to store the filenames of frames for each color
   const [isLoadingFrameFiles, setIsLoadingFrameFiles] = useState<Record<string, boolean>>({}); // State to track loading status of frames for each color
+  const [showBackToTop, setShowBackToTop] = useState(false);
 
   // Define the desired order of colors for display
   const colorOrder = [
@@ -65,11 +68,12 @@ export default function CinePaletteExplorer(): ReactElement {
 
   // Fetch movie details when the selected movie ID changes
   useEffect(() => {
-    if (selectedMovieId) {
+      if (selectedMovieId === '') return;
+      if (selectedMovieId) {
       const movieData = getMoviePaletteById(selectedMovieId);
       if (movieData) {
         setSelectedMovieData(movieData);
-        setColorExplanations({});
+          setColorExplanations({});
         setIsLoadingExplanation({});
         setIsMovieSelected(true);
 
@@ -167,35 +171,35 @@ export default function CinePaletteExplorer(): ReactElement {
   }, [selectedColor, selectedMovieId, frameFiles, isLoadingFrameFiles]);
 
   const handleMovieSelect = (event?: FormEvent<HTMLFormElement>) => {
-    if(isBrowsing) return;
+    console.log("handleMovieSelect called");
+    if (isMovieSelected) return;
+    event?.preventDefault();
     const trimmedInput = inputValue.trim(); // Trim whitespace from the input value
 
     if (!trimmedInput) {
-      setError("Please enter a movie ID or name.");
-      setSelectedMovieId('');
+      setError("Please enter a movie ID or name.");      
       return;
     }
 
     const movieData = getMoviePaletteById(trimmedInput.toLowerCase());
 
     if (movieData) {
-      setSelectedMovieId(movieData.id); // Set the selected movie ID, triggering the useEffect hook to fetch movie details
+      setSelectedMovieId(movieData.id);
       setError(null); // Clear any previous errors
       setIsMovieSelected(true);
     } else {
-      setSelectedMovieId('');
       setError(`Movie "${trimmedInput}" not found in our data. Please check the ID or name and try again.`);
     }
   };
 
   const handleBrowseClick = () => {
     setIsBrowsing(true);
-    setError(null);
+      setError(null);
   };
 
-  const handleCancelBrowse = () => {
-      setIsBrowsing(false);
-      setInputValue('');
+  const handleCancelBrowse = () => {  
+    setIsBrowsing(false);    
+    setInputValue('');
       setSelectedMovieId('');
       setSelectedMovieData(null);
       setError(null);
@@ -227,7 +231,7 @@ export default function CinePaletteExplorer(): ReactElement {
   };
 
    const toggleTooltip = (color: string, isOpen: boolean) => {
-     setTooltipOpen(prev => ({...prev, [color]: isOpen }));
+     setTooltipOpen(prev => ({...prev, [color]: isOpen }));     
      if(isOpen && colorExplanations[color] !== 'loading' && typeof colorExplanations[color] !== 'string') {
         fetchColorExplanation(color);
      }
@@ -249,7 +253,7 @@ export default function CinePaletteExplorer(): ReactElement {
     if (!img) return;
         const rect = img.getBoundingClientRect();
     const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
+    const y = event.clientY - rect.top;    
 
     const colorHex = getColorAtPixel(img, x, y);    
 
@@ -355,13 +359,14 @@ export default function CinePaletteExplorer(): ReactElement {
   const handleMovieTitleClick = (movieName: string) => {
       const movie = allMovies.find(m => m.name === movieName);
       if(movie) {
+          setIsBrowsing(false);
         setSelectedMovieId(movie.id);
       }
   };
 
   return (
     <div className="container mx-auto p-4 md:p-8 min-h-screen flex flex-col items-center">
-      <Card className="w-full max-w-4xl shadow-xl mb-8 bg-card text-card-foreground rounded-lg overflow-hidden border border-border">
+       <Card className="w-full max-w-4xl shadow-xl mb-8 bg-card text-card-foreground rounded-lg overflow-hidden border border-border">
         <CardHeader className="bg-muted/40 p-4 border-b border-border"> 
           <CardTitle className="text-2xl font-bold text-center text-primary">CinePalette Explorer</CardTitle>
            <CardDescription className="text-center text-muted-foreground">Enter a movie's IMDb ID (e.g., tt0111161) to explore its visual identity.</CardDescription>
@@ -373,15 +378,12 @@ export default function CinePaletteExplorer(): ReactElement {
               id="movie-id-input"
               type="text"
               value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
+              onChange={(e) => {                
+                setInputValue(e.target.value);
+              }}
               placeholder="Enter IMDb ID or name (e.g., tt0111161, Avatar)"
-              className={cn(
-                "flex-grow text-base bg-background border-input ring-offset-background focus:ring-ring",
-                isBrowsing ? "bg-muted/50" : "" // Visual feedback for browsing
-              )}
-              aria-label="Enter Movie IMDb ID"
+                isBrowsing={isBrowsing}
             />
-              {isBrowsing && (<Button type="button" variant="outline" onClick={handleCancelBrowse} aria-label="Cancel Browsing"><X className="h-4 w-4"/> </Button>)}
             <Button type="submit" aria-label="Load Movie Palette">
               <Search className="mr-2 h-4 w-4" /> Load Palette
             </Button> 
@@ -609,5 +611,6 @@ const allMovies: MoviePaletteDataWithId[] = getAllMoviePalettes().map(movie => (
   ...movie,
   id: movie.id,
 }));
+
 
 
