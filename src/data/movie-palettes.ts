@@ -4,41 +4,30 @@ export interface MoviePaletteData {
   name: string; // e.g., "The Shawshank Redemption"
   palettePath: string; // Path relative to the /public directory, e.g., "/palettes/tt0111161.png"
   framesPath: string; // Path relative to the /public directory, e.g., "/frames/tt0111161/"
+  youtubeKey: string; // youtube id
 }
 
-// NOTE: Ensure the corresponding palette images (e.g., tt0111161.png)
-// are placed inside the /public/palettes/ directory.
-// NOTE: Ensure the corresponding frame folders (e.g., /public/frames/tt0111161/#COLORHEX) exist.
 export const moviePalettes: MoviePaletteData[] = [
-  {
-    id: "tt0111161",
-    name: "The Shawshank Redemption (1994)",
-    palettePath: "/palettes/tt0111161.png", // Removed /public prefix
-    framesPath:  "/frames/tt0111161/" // Removed /public prefix
-  },
-  {
-    id: "tt0068646",
-    name: "The Godfather (1972)",
-    palettePath: "/palettes/tt0068646.png", // Removed /public prefix
-    framesPath:  "/frames/tt0068646/" // Removed /public prefix
-  },
-  {
-    id: "tt0468569",
-    name: "The Dark Knight (2008)",
-    palettePath: "/palettes/tt0468569.png", // Removed /public prefix
-    framesPath:  "/frames/tt0468569/" // Removed /public prefix
-  },
   {
     id: "tt2278388",
     name: "The Grand Budapest Hotel (2014)",
-    palettePath: "/palettes/tt2278388.png", // Removed /public prefix
-    framesPath:  "/frames/tt2278388/" // Removed /public prefix
+    palettePath: "/palettes/tt2278388.png",
+    framesPath:  "/frames/tt2278388/",
+    youtubeKey: "1Fg5iWmQjwk",
   },
-    {
-    id: "tt0052784", // Example ID for testing
-    name: "North by Northwest (1959)", // Example Name
-    palettePath: "/palettes/tt0052784.png", // Removed /public prefix
-    framesPath:  "/frames/tt0052784/" // Removed /public prefix
+  {
+    id: "tt0499549",
+    name: "Avatar (2009)",
+    palettePath: "/palettes/tt0499549.png",
+    framesPath:  "/frames/tt0499549/",
+    youtubeKey: "5PSNL1qE6VY",
+  },
+  {
+    id: "tt0190590",
+    name: "O Brother, Where Art Thou? (2000)",
+    palettePath: "/palettes/tt0190590.png",
+    framesPath:  "/frames/tt0190590/",
+    youtubeKey: "G7nNDKrTrag",
   }
 ];
 
