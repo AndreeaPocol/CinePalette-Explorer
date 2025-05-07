@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { getMoviePaletteById, getAllMoviePalettes, type MoviePaletteData, type MoviePaletteDataWithId } from '@/data/movie-palettes';
+import { getMoviePaletteById, getAllMoviePalettes, type MoviePaletteData } from '@/data/movie-palettes';
 import { explainColorPalette, type ExplainColorPaletteOutput } from '@/ai/flows/explain-color-palette';
 import { Info, Loader2, Search, Image as ImageIcon, AlertCircle, X } from 'lucide-react';
 import Image from 'next/image';
@@ -485,42 +485,33 @@ export default function CinePaletteExplorer(): ReactElement {
 
        <Card className="w-full max-w-4xl shadow-xl mb-8 bg-card text-card-foreground rounded-lg overflow-hidden border border-border">
         <CardHeader className="bg-muted/40 p-4 border-b border-border">
-          <CardTitle className="text-2xl font-bold text-center text-primary">CinePalette Explorer</CardTitle>
-           <CardDescription className="text-center text-muted-foreground">Enter a movie's IMDb ID (e.g., tt0111161) or name to explore its visual identity.</CardDescription>
+          <CardTitle className="text-4xl font-bold text-center text-primary">CinePalette Explorer</CardTitle>
+           {/* <CardDescription className="text-center text-muted-foreground">Enter a movie's IMDb ID (e.g., tt0111161) or name to explore its visual identity.</CardDescription> */}
         </CardHeader>
         <CardContent className="p-4 md:p-6 space-y-6">
          {/* Input Form - Conditionally Render or Keep Always Visible */}
-          <form onSubmit={handleMovieSelect} className="flex flex-col sm:flex-row items-center justify-center gap-3 w-full max-w-md mx-auto">
-            <Label htmlFor="movie-id-input" className="sr-only">Movie ID or Name:</Label>
-            <Input
-              id="movie-id-input"
-              type="text"
-              value={inputValue}
-              onChange={(e) => {
-                setInputValue(e.target.value);
-                // Optionally clear error when user starts typing
-                if (error) setError(null);
-              }}
-              placeholder="Enter IMDb ID or name (e.g., tt0111161)"
-              aria-label="Enter Movie IMDb ID or Name"
-              className={cn(isBrowsing && "bg-muted/50")} // Keep styling if needed
-            />
-            <Button type="submit" aria-label="Load Movie Palette">
-              <Search className="mr-2 h-4 w-4" /> Load Palette
-            </Button>
-              {/* Browse Button */}
-             {!selectedMovieData && !isBrowsing && (
-                 <Button type="button" variant="outline" onClick={handleBrowseClick} aria-label="Browse movies">
-                     Browse
-                 </Button>
-             )}
-             {/* Cancel Browse Button */}
-             {isBrowsing && (
-                <Button type="button" variant="outline" onClick={handleCancelBrowse} aria-label="Cancel Browsing">
-                    <X className="h-4 w-4" />
-                </Button>
-            )}
-          </form>
+          <div className='w-full'>
+            <div className="search-box-container w-full flex flex-col items-center mt-4">
+            <form onSubmit={handleMovieSelect} className="flex items-center gap-3 w-full">
+              <Label htmlFor="movie-id-input" className="sr-only">Movie ID or Name:</Label>
+              <Input
+                type="text"
+                value={inputValue}
+                onChange={(e) => {
+                  setInputValue(e.target.value);
+                  // Optionally clear error when user starts typing
+                  if (error) setError(null);
+                }}
+                placeholder="Search"
+                aria-label="Enter Movie IMDb ID or Name"
+                className={cn(isBrowsing && "bg-muted/50 w-full")} // Keep styling if needed
+              />
+              <Button type="submit" aria-label="Load Movie Palette">
+                <Search className="mr-2 h-4 w-4" /> Load Palette
+              </Button>
+            </form>
+            </div>
+          </div>
 
           {error && (
             <Alert variant="destructive" className="mt-4">
@@ -529,7 +520,6 @@ export default function CinePaletteExplorer(): ReactElement {
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           )}
-
           {/* Movie List Dialog */}
           <MovieListDialog
                 isOpen={isOpen}
@@ -541,25 +531,6 @@ export default function CinePaletteExplorer(): ReactElement {
                 }}
                 handleMovieTitleClick={handleMovieTitleClick}
             />
-
-             {/* Back to Top button */}
-              {showBackToTop && (
-                 <TooltipProvider>
-                    <Tooltip>
-                       <TooltipTrigger asChild>
-                          <Button
-                              className="fixed bottom-4 right-4 z-50"
-                              variant="outline"
-                              size="icon"
-                              onClick={scrollToTop}
-                              aria-label="Back to top of the page"
-                           >
-                              <ArrowUp className="h-4 w-4" />
-                           </Button>
-                        </TooltipTrigger>
-                        <TooltipContent side="left">Back to top</TooltipContent>
-                     </Tooltip>
-                 </TooltipProvider>)}
 
           {selectedMovieData ? (
              <>
@@ -751,12 +722,43 @@ export default function CinePaletteExplorer(): ReactElement {
            </>
           ) : !error && !selectedMovieId && !isBrowsing ? (
             // Initial state message (not browsing)
-           <> <div className="text-center py-10 text-muted-foreground">
-                 <ImageIcon className="mx-auto h-12 w-12 mb-4 text-muted-foreground/50" />
+           <> <div className="text-center py-4 text-muted-foreground">
+                 {/* <ImageIcon className="mx-auto h-12 w-12 mb-4 text-muted-foreground/50" /> */}
                  <p>Enter a movie ID or name above, or browse the list.</p>
             </div>
            </>
           ) : null // Render nothing if error exists or browsing (components handle those states)
+          }
+          
+            {!error && !selectedMovieId && !isBrowsing && (
+                 <div className='w-full flex flex-col items-center'>
+                    {/* Browse Button */}
+                    <Button type="button" variant="outline" onClick={handleBrowseClick} aria-label="Browse movies" className="mt-2">
+                         Browse
+                     </Button>
+                     
+                </div>
+            )}
+
+           {/* Back to Top button */}
+           {showBackToTop && (
+              <TooltipProvider>
+                 <Tooltip>
+                    <TooltipTrigger asChild>
+                       <Button
+                           className="fixed bottom-4 right-4 z-50"
+                           variant="outline"
+                           size="icon"
+                           onClick={scrollToTop}
+                           aria-label="Back to top of the page"
+                        >
+                           <ArrowUp className="h-4 w-4" />
+                        </Button>
+                     </TooltipTrigger>
+                     <TooltipContent side="left">Back to top</TooltipContent>
+                  </Tooltip>
+              </TooltipProvider>
+           )
           }
         </CardContent>
       </Card>
