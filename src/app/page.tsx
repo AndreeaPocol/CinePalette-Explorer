@@ -671,7 +671,8 @@ export default function CinePaletteExplorer(): ReactElement {
                                 ) : (
                                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 md:gap-3">
                                     {(frameFiles[selectedColor] && frameFiles[selectedColor].length > 0) ? (
-                                        frameFiles[selectedColor].map((file) => {
+                                        [...frameFiles[selectedColor]].sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })).map((file) => {
+
                                             if(!selectedMovieId || !selectedColor) return null;
                                             const framePath = `/frames/${selectedMovieId}/${selectedColor}/${file}`;
                                             const hasError = frameErrors[selectedColor]?.[file] ?? false;
