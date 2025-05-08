@@ -485,7 +485,8 @@ export default function CinePaletteExplorer(): ReactElement {
 
        <Card className="w-full max-w-4xl shadow-xl mb-8 bg-card text-card-foreground rounded-lg overflow-hidden border border-border">
         <CardHeader className="bg-muted/40 p-4 border-b border-border">
-          <CardTitle className="text-4xl font-bold text-center text-primary">CinePalette Explorer</CardTitle>
+          <CardTitle className="text-4xl font-bold text-center text-primary font-jetbrains-mono">RefinedPalette</CardTitle>
+          <p className="text-center text-muted-foreground">Your mood. Your movie.</p>
            {/* <CardDescription className="text-center text-muted-foreground">Enter a movie's IMDb ID (e.g., tt0111161) or name to explore its visual identity.</CardDescription> */}
         </CardHeader>
         <CardContent className="p-4 md:p-6 space-y-6">
