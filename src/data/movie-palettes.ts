@@ -56,6 +56,34 @@ export const moviePalettes: MoviePaletteData[] = [
     palettePath: "/palettes/tt0081505.png",
     framesPath:  "/frames/tt0081505/",
     youtubeKey: "S014oGZiSdI",
+  },
+  {
+    id: "tt0373889",
+    name: "Harry Potter and the Order of the Phoenix",
+    palettePath: "/palettes/tt0373889.png",
+    framesPath:  "/frames/tt0373889/",
+    youtubeKey: "47PHbQTmw5g",
+  },
+  {
+    id: "tt0417741",
+    name: "Harry Potter and the Half-Blood Prince",
+    palettePath: "/palettes/tt0417741.png",
+    framesPath:  "/frames/tt0417741/",
+    youtubeKey: "JYLdTuL9Wjw",
+  },
+  {
+    id: "tt0848228",
+    name: "The Avengers",
+    palettePath: "/palettes/tt0848228.png",
+    framesPath:  "/frames/tt0848228/",
+    youtubeKey: "-tBKkfahCFQ",
+  },
+  {
+    id: "tt2395427",
+    name: "Avengers: Age of Ultron",
+    palettePath: "/palettes/tt2395427.png",
+    framesPath:  "/frames/tt2395427/",
+    youtubeKey: "rgFjcUXyWW0",
   }
 ];
 
