@@ -1,7 +1,8 @@
 'use client';
 
 
-
+import { use } from 'react';
+import Color from 'colorjs.io';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, } from "@/components/ui/tooltip";
 import type { ReactElement, SyntheticEvent, ReactNode } from 'react';
 import React, { useState, useEffect, useCallback, FormEvent, useRef } from 'react';
@@ -23,6 +24,7 @@ import type { TrailerFileApiOutput } from '@/app/api/trailer-file/route';
 import Link from "next/link";
 import { MovieListDialog } from "@/components/movie-list-dialog";
 import { ArrowLeft, ArrowUp } from 'lucide-react';
+
 
 
 type MoviePaletteDataWithId = MoviePaletteData & { id: string };
@@ -57,6 +59,10 @@ export default function CinePaletteExplorer(): ReactElement {
   const [isLoadingFrameFiles, setIsLoadingFrameFiles] = useState<Record<string, boolean>>({}); // State to track loading status of frames for each color
     const [isOpen, setIsOpen] = useState(false);
   const [showBackToTop, setShowBackToTop] = useState(false);
+
+  const [recommendedMovie, setRecommendedMovie] = useState<MoviePaletteData | null>(null);
+  const [isLoadingRecommendation, setIsLoadingRecommendation] = useState<boolean>(false);
+  const [recommendationError, setRecommendationError] = useState<string | null>(null);
 
   // Define the desired order of colors for display
   const colorOrder = [
@@ -238,6 +244,165 @@ export default function CinePaletteExplorer(): ReactElement {
     setIsOpen(false); // Close the movie list dialog
 
   };
+
+  const fetchPaletteColors = useCallback(async (movieId: string) => {
+    try {
+      const response = await fetch(`/api/palette-colors?movieId=${movieId}`);
+      if (!response.ok) {
+        throw new Error(`Error fetching palette colors: ${response.statusText}`);
+      }
+      const data = await response.json();
+      if (data.success && data.colors) {
+        return data.colors as { r: number; g: number; b: number, count: number }[];
+      } else {
+        throw new Error(data.error || 'Failed to fetch palette colors');
+      }
+    } catch (error) {
+      return null;
+    }
+  }, []);
+
+  // Calculate Mean Inter-color Distance (MICD) between two palettes
+  const calculateMICD = useCallback((colors1: { r: number; g: number; b: number, count: number }[], colors2: { r: number; g: number; b: number, count: number }[]): number => {
+    if (!colors1.length || !colors2.length) return Infinity; // Cannot calculate MICD without colors
+
+    let totalDeltaE = 0;
+    let totalWeight1 = 0;
+
+    // Calculate total pixel count for each palette
+    const totalPixels1 = colors1.reduce((sum, color) => sum + color.count, 0);
+    const totalPixels2 = colors2.reduce((sum, color) => sum + color.count, 0);
+
+    // For each color in palette 1, find the closest color in palette 2 and calculate deltaE
+    for (const color1 of colors1) {
+      let minDeltaE = Infinity;
+      for (const color2 of colors2) {
+          // Assert color values are within the valid range [0, 255]
+          if (color1.r < 0 || color1.r > 255 || color1.g < 0 || color1.g > 255 || color1.b < 0 || color1.b > 255) {
+             throw new Error(`Invalid color1 value: ${JSON.stringify(color1)}. Color values must be between 0 and 255.`);
+          }
+          if (color2.r < 0 || color2.r > 255 || color2.g < 0 || color2.g > 255 || color2.b < 0 || color2.b > 255) {
+             throw new Error(`Invalid color2 value: ${JSON.stringify(color2)}. Color values must be between 0 and 255.`);
+          }
+          // Calculate Delta E using the 2000 method
+          // Convert RGB arrays to Color objects before calculating deltaE
+          // The Color constructor likely expects RGB values in the range [0, 1]
+          const color1Obj = new Color("srgb", [color1.r / 255, color1.g / 255, color1.b / 255]);
+          const color2Obj = new Color("srgb", [color2.r / 255, color2.g / 255, color2.b / 255]);
+          const currentDeltaE = color1Obj.deltaE(color2Obj, { method: "2000" });
+
+          // Only consider valid deltaE calculations
+          if (currentDeltaE !== undefined && !isNaN(currentDeltaE)) {
+             minDeltaE = Math.min(minDeltaE, currentDeltaE);
+          }
+      }
+       // If a closest color was found in palette 2
+       if (minDeltaE !== Infinity) {
+            const weight = color1.count / totalPixels1;
+            totalDeltaE += minDeltaE * weight;
+            totalWeight1 += weight;
+       }
+    }
+
+    // Calculate the weighted average deltaE from palette 1 to palette 2
+    let cost1 = totalWeight1 > 0 ? totalDeltaE / totalWeight1 : Infinity;
+
+    totalDeltaE = 0;
+    let totalWeight2 = 0;
+
+    // For each color in palette 2, find the closest color in palette 1 and calculate deltaE
+    for (const color2 of colors2) {
+      let minDeltaE = Infinity;
+      for (const color1 of colors1) {
+         try {
+          // Assert color values are within the valid range [0, 255]
+          if (color1.r < 0 || color1.r > 255 || color1.g < 0 || color1.g > 255 || color1.b < 0 || color1.b > 255) {
+             throw new Error(`Invalid color1 value: ${JSON.stringify(color1)}. Color values must be between 0 and 255.`);
+          }
+          if (color2.r < 0 || color2.r > 255 || color2.g < 0 || color2.g > 255 || color2.b < 0 || color2.b > 255) {
+             throw new Error(`Invalid color2 value: ${JSON.stringify(color2)}. Color values must be between 0 and 255.`);
+          }
+          // Calculate Delta E using the 2000 method
+          // Convert RGB arrays to Color objects before calculating deltaE
+          // The Color constructor likely expects RGB values in the range [0, 1]
+          const color1Obj = new Color("srgb", [color1.r / 255, color1.g / 255, color1.b / 255]);
+          const color2Obj = new Color("srgb", [color2.r / 255, color2.g / 255, color2.b / 255]);
+          const currentDeltaE = color2Obj.deltaE(color1Obj, { method: "2000" });
+           if (currentDeltaE !== undefined && !isNaN(currentDeltaE)) {
+              minDeltaE = Math.min(minDeltaE, currentDeltaE);
+           }
+          } catch (error) {
+              console.error("Error calculating DeltaE:", error);
+              // Continue to the next iteration of the inner loop
+              continue;
+          }
+          // If a closest color was found in palette 1
+          if (minDeltaE !== Infinity) {
+                const weight = color2.count / totalPixels2;
+                totalDeltaE += minDeltaE * weight;
+                totalWeight2 += weight;
+          }
+        }
+      }
+    
+    // Calculate the weighted average deltaE from palette 2 to palette 1
+    let cost2 = totalWeight2 > 0 ? totalDeltaE / totalWeight2 : Infinity;
+
+    return (cost1 + cost2) / 2;
+  }, []); // Add empty dependency array here
+
+    const findMostSimilarMovie = useCallback(async () => {
+        if (!selectedMovieId) {
+            setRecommendedMovie(null);
+            setRecommendationError(null);
+            return;
+        }
+
+        setIsLoadingRecommendation(true);
+        setRecommendedMovie(null); // Clear previous recommendation
+        setRecommendationError(null); // Clear previous error
+
+        try {
+            const selectedMovieColors = await fetchPaletteColors(selectedMovieId);
+            if (!selectedMovieColors) {
+                setRecommendationError('Could not fetch palette colors for the selected movie.');
+                setIsLoadingRecommendation(false);
+                return;
+            }
+
+            let minMICD = Infinity;
+            let bestMatchMovie: MoviePaletteDataWithId | null = null;
+
+            for (const candidateMovie of allMovies) {
+                if (candidateMovie.id === selectedMovieId) continue; // Skip the selected movie itself
+
+                const candidateColors = await fetchPaletteColors(candidateMovie.id);
+                if (!candidateColors) continue; // Skip if candidate colors can't be fetched
+
+                const micd = calculateMICD(selectedMovieColors, candidateColors);
+
+                if (micd < minMICD) {
+                    minMICD = micd;
+                    bestMatchMovie = candidateMovie;
+                }
+            }
+
+            setRecommendedMovie(bestMatchMovie);
+            if (!bestMatchMovie) {
+                setRecommendationError('No similar palette found.');
+            }
+        } catch (error) {
+            console.error("Error finding similar movie:", error);
+            setRecommendationError('An error occurred while finding a recommendation.');
+        } finally {
+            setIsLoadingRecommendation(false);
+        }
+    }, [selectedMovieId, fetchPaletteColors, calculateMICD, allMovies]);
+
+     useEffect(() => {
+        // Call findMostSimilarMovie when selectedMovieId changes
+        findMostSimilarMovie();
+    }, [selectedMovieId, findMostSimilarMovie]); // Include findMostSimilarMovie in dependencies
 
   const fetchColorExplanation = useCallback(async (color: string) => {
     if (!selectedMovieId || !color || isLoadingExplanation[color] || colorExplanations[color] === 'loading') return;
@@ -721,6 +886,22 @@ export default function CinePaletteExplorer(): ReactElement {
                               )}
                            </CardContent>
                        </Card>
+
+                       {/* Movie Recommendation Section */}
+                       <div className="mt-6 text-center text-lg text-foreground font-semibold">
+                            {isLoadingRecommendation ? (
+                                <div className="flex justify-center items-center">
+                                    <Loader2 className="h-5 w-5 animate-spin mr-2 text-primary"/>
+                                    Finding recommendations...
+                                </div>
+                            ) : recommendationError ? (
+                                <p className="text-sm text-destructive">{recommendationError}</p>
+                            ) : recommendedMovie ? (
+                                <>If you liked this palette, you might also like: {' '} <Button variant="link" onClick={() => setSelectedMovieId(recommendedMovie.id)} className="p-0 h-auto text-lg font-semibold">{recommendedMovie.name}</Button>
+                                </>
+                            ) : null
+                            }
+                       </div>
                   </CardContent>
                </Card>
            </>
