@@ -65,13 +65,13 @@ export const moviePalettes: MoviePaletteData[] = [
     id: "tt0848228",
     name: "The Avengers",
     palettePath: "/palettes/tt0848228.png",
-    youtubeKey: "-tBKkfahCFQ",
+    youtubeKey: "eOrNdBpGMv8",
   },
   {
     id: "tt2395427",
     name: "Avengers: Age of Ultron",
     palettePath: "/palettes/tt2395427.png",
-    youtubeKey: "rgFjcUXyWW0",
+    youtubeKey: "MZoO8QVMxkk",
   }
 ];
 
