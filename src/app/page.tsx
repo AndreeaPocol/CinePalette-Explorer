@@ -266,12 +266,11 @@ export default function CinePaletteExplorer(): ReactElement {
   const calculateMICD = useCallback((colors1: { r: number; g: number; b: number, count: number }[], colors2: { r: number; g: number; b: number, count: number }[]): number => {
     if (!colors1.length || !colors2.length) return Infinity; // Cannot calculate MICD without colors
 
-    let totalDeltaE = 0;
-    let totalWeight1 = 0;
-
     // Calculate total pixel count for each palette
     const totalPixels1 = colors1.reduce((sum, color) => sum + color.count, 0);
     const totalPixels2 = colors2.reduce((sum, color) => sum + color.count, 0);
+
+    let cost1 = 0;
 
     // For each color in palette 1, find the closest color in palette 2 and calculate deltaE
     for (const color1 of colors1) {
@@ -284,37 +283,29 @@ export default function CinePaletteExplorer(): ReactElement {
           if (color2.r < 0 || color2.r > 255 || color2.g < 0 || color2.g > 255 || color2.b < 0 || color2.b > 255) {
              throw new Error(`Invalid color2 value: ${JSON.stringify(color2)}. Color values must be between 0 and 255.`);
           }
-          // Calculate Delta E using the 2000 method
-          // Convert RGB arrays to Color objects before calculating deltaE
-          // The Color constructor likely expects RGB values in the range [0, 1]
           const color1Obj = new Color("srgb", [color1.r / 255, color1.g / 255, color1.b / 255]);
           const color2Obj = new Color("srgb", [color2.r / 255, color2.g / 255, color2.b / 255]);
-          const currentDeltaE = color1Obj.deltaE(color2Obj, { method: "2000" });
+          const currentDeltaE = color1Obj.deltaE2000(color2Obj);
 
           // Only consider valid deltaE calculations
           if (currentDeltaE !== undefined && !isNaN(currentDeltaE)) {
              minDeltaE = Math.min(minDeltaE, currentDeltaE);
+          } else {
+            throw new Error(`minDeltaE is Infinity.`);
           }
       }
-       // If a closest color was found in palette 2
-       if (minDeltaE !== Infinity) {
-            const weight = color1.count / totalPixels1;
-            totalDeltaE += minDeltaE * weight;
-            totalWeight1 += weight;
-       }
+      if (minDeltaE !== Infinity) {
+        const weight = color1.count / totalPixels1;
+        cost1 += (minDeltaE * weight)
+      }
     }
 
-    // Calculate the weighted average deltaE from palette 1 to palette 2
-    let cost1 = totalWeight1 > 0 ? totalDeltaE / totalWeight1 : Infinity;
-
-    totalDeltaE = 0;
-    let totalWeight2 = 0;
+    let cost2 = 0;
 
     // For each color in palette 2, find the closest color in palette 1 and calculate deltaE
     for (const color2 of colors2) {
       let minDeltaE = Infinity;
       for (const color1 of colors1) {
-         try {
           // Assert color values are within the valid range [0, 255]
           if (color1.r < 0 || color1.r > 255 || color1.g < 0 || color1.g > 255 || color1.b < 0 || color1.b > 255) {
              throw new Error(`Invalid color1 value: ${JSON.stringify(color1)}. Color values must be between 0 and 255.`);
@@ -322,32 +313,21 @@ export default function CinePaletteExplorer(): ReactElement {
           if (color2.r < 0 || color2.r > 255 || color2.g < 0 || color2.g > 255 || color2.b < 0 || color2.b > 255) {
              throw new Error(`Invalid color2 value: ${JSON.stringify(color2)}. Color values must be between 0 and 255.`);
           }
-          // Calculate Delta E using the 2000 method
-          // Convert RGB arrays to Color objects before calculating deltaE
-          // The Color constructor likely expects RGB values in the range [0, 1]
           const color1Obj = new Color("srgb", [color1.r / 255, color1.g / 255, color1.b / 255]);
           const color2Obj = new Color("srgb", [color2.r / 255, color2.g / 255, color2.b / 255]);
-          const currentDeltaE = color2Obj.deltaE(color1Obj, { method: "2000" });
+          const currentDeltaE = color2Obj.deltaE2000(color1Obj);
            if (currentDeltaE !== undefined && !isNaN(currentDeltaE)) {
               minDeltaE = Math.min(minDeltaE, currentDeltaE);
            }
-          } catch (error) {
-              console.error("Error calculating DeltaE:", error);
-              // Continue to the next iteration of the inner loop
-              continue;
-          }
-          // If a closest color was found in palette 1
+          // If a closest color was found in palette 2
           if (minDeltaE !== Infinity) {
-                const weight = color2.count / totalPixels2;
-                totalDeltaE += minDeltaE * weight;
-                totalWeight2 += weight;
+            const weight = color2.count / totalPixels2;
+            cost2 += (minDeltaE * weight)
+          } else {
+              throw new Error(`minDeltaE is Infinity.`);
           }
         }
       }
-    
-    // Calculate the weighted average deltaE from palette 2 to palette 1
-    let cost2 = totalWeight2 > 0 ? totalDeltaE / totalWeight2 : Infinity;
-
     return (cost1 + cost2) / 2;
   }, []); // Add empty dependency array here
 
