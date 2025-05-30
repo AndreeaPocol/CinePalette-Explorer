@@ -59,6 +59,7 @@ export default function CinePaletteExplorer(): ReactElement {
   const [isLoadingFrameFiles, setIsLoadingFrameFiles] = useState<Record<string, boolean>>({}); // State to track loading status of frames for each color
     const [isOpen, setIsOpen] = useState(false);
   const [showBackToTop, setShowBackToTop] = useState(false);
+  const [suggestion, setSuggestion] = useState<string>(''); // State for autocomplete suggestion
 
   const [recommendedMovie, setRecommendedMovie] = useState<MoviePaletteData | null>(null);
   const [isLoadingRecommendation, setIsLoadingRecommendation] = useState<boolean>(false);
@@ -632,34 +633,70 @@ export default function CinePaletteExplorer(): ReactElement {
         <CardHeader className="bg-muted/40 p-4 border-b border-border">
           <Link href="/" onClick={handleBackToHomePage} className="block">
           <CardTitle className="text-4xl font-bold text-center text-primary font-jetbrains-mono cursor-pointer">RefinedPalette</CardTitle>
+
           </Link>
           <p className="text-center text-muted-foreground">Your mood. Your movie.</p>
            {/* <CardDescription className="text-center text-muted-foreground">Enter a movie's IMDb ID (e.g., tt0111161) or name to explore its visual identity.</CardDescription> */}
         </CardHeader>
-        <CardContent className="p-4 md:p-6 space-y-6">
-         {/* Input Form - Conditionally Render or Keep Always Visible */}
-          <div className='w-full'>
-            <div className="search-box-container w-full flex flex-col items-center mt-4">
-            <form onSubmit={handleMovieSelect} className="flex items-center gap-3 w-full">
+        <CardContent className="p-4 md:p-6 space-y-4">
+         {/* Search Input with Suggestion */}
+          <div className="search-box-container w-full relative mt-4"> {/* Made relative */}
+            {/* Input Form - now a flex container */}
+            <form onSubmit={handleMovieSelect} className="relative flex items-center gap-3 w-full" aria-label="Search for movie palette">
+              {/* Span for suggestion, positioned absolutely */}
+              <span
+              className="absolute inset-0 flex items-center pl-3 pointer-events-none text-gray-400 overflow-hidden text-nowrap"
+              style={{ top: 0, left: 0 }} // Explicitly set top and left
+              aria-hidden="true" // Hide from screen readers as it's a visual aid for the input
+              >
+              {/* Display suggestion only if inputValue exists and suggestion is longer */}
+              {inputValue && suggestion && suggestion.toLowerCase().startsWith(inputValue.trim().toLowerCase()) ? (
+              <span className="opacity-0">{inputValue}</span> // Hidden span to push suggestion
+              ) : null}
+              {inputValue && suggestion ? suggestion.substring(inputValue.length) : ''}
+              </span>
               <Label htmlFor="movie-id-input" className="sr-only">Movie ID or Name:</Label>
+              {/* Input with transparent background and higher z-index */}
               <Input
                 type="text"
+                id="movie-id-input" // Added id for label association
                 value={inputValue}
                 onChange={(e) => {
-                  setInputValue(e.target.value);
+                  setInputValue(e.target.value); // Keep inputValue as is
                   // Optionally clear error when user starts typing
                   if (error) setError(null);
                 }}
                 placeholder="Search"
-                aria-label="Enter Movie IMDb ID or Name"
-                className={cn(isBrowsing && "bg-muted/50 w-full")} // Keep styling if needed
+                onKeyDown={(e) => {
+                  if (e.key === 'Tab' && suggestion) {
+                    e.preventDefault();
+                    setInputValue(suggestion);
+                    const movie = allMovies.find(m => m.name.toLowerCase() === suggestion.toLowerCase());
+                    if (movie && suggestion) { // Check if suggestion is not empty
+                      setSelectedMovieId(movie.id);
+                    } else {
+                      // Handle case where suggestion doesn't match a movie (shouldn't happen if suggestion is based on allMovies)
+                      console.error("Suggestion does not match a known movie:", suggestion);
+                    }
+                    setSuggestion(''); // Clear suggestion after accepting
+                  }
+                }}
+                onInput={(e) => { // Use onInput for more immediate filtering
+                   const value = (e.target as HTMLInputElement).value.trim().toLowerCase();
+                   const matchingMovie = value ? allMovies.find(m => m.name.toLowerCase().startsWith(value)) : undefined; // Only search if value is not empty
+                    if (matchingMovie && matchingMovie.name.toLowerCase() === value) {
+                       setSuggestion(''); // If input exactly matches a movie name, no suggestion needed
+                   } else
+                   setSuggestion(matchingMovie ? matchingMovie.name : '');
+                   if (error) setError(null); // Clear error on input
+                }}
+                className="bg-transparent relative z-10 w-full" // Added bg-transparent, relative, z-10
               />
               <Button type="submit" aria-label="Load Movie Palette">
                 <Search className="mr-2 h-4 w-4" /> Load Palette
               </Button>
             </form>
             </div>
-          </div>
 
           {error && (
             <Alert variant="destructive" className="mt-4">
