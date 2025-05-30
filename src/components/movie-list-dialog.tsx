@@ -18,15 +18,14 @@ interface MovieListDialogProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   handleMovieTitleClick: (movieName: string) => void;
+  movies: MoviePaletteData[];
 }
-
-// Fetch all movies once when the component module loads
-const allMovies: MoviePaletteData[] = getAllMoviePalettes();
 
 export const MovieListDialog: React.FC<MovieListDialogProps> = ({
   isOpen,
   onOpenChange,
   handleMovieTitleClick,
+  movies,
 }) => {
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -39,8 +38,8 @@ export const MovieListDialog: React.FC<MovieListDialogProps> = ({
         </DialogHeader>
         <ScrollArea className="h-[400px] w-full rounded-md border border-border p-4">
           <div className="space-y-2">
-            {allMovies.length > 0 ? (
-              allMovies.map((movie) => (
+            {movies.length > 0 ? (
+              movies.map((movie) => (
                 <Button
                   key={movie.id}
                   variant="ghost"

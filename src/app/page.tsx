@@ -713,7 +713,9 @@ export default function CinePaletteExplorer(): ReactElement {
                     if (!open) {
                         setIsBrowsing(false); // Ensure browsing state is reset if dialog is closed externally
                     }
+
                 }}
+                movies={allMovies} // Pass the sorted allMovies array
                 handleMovieTitleClick={handleMovieTitleClick}
             />
 
@@ -967,8 +969,10 @@ export default function CinePaletteExplorer(): ReactElement {
     </div>
   );
 };
-const allMovies: MoviePaletteDataWithId[] = getAllMoviePalettes().map(movie => ({
-  ...movie,
-  id: movie.id, // Ensure the id field is explicitly included
-}));
+const allMovies: MoviePaletteDataWithId[] = getAllMoviePalettes()
+ .map(movie => ({
+ ...movie,
+ id: movie.id, // Ensure the id field is explicitly included
+  }))
+ .sort((a, b) => a.name.localeCompare(b.name)); // Sort alphabetically by name
 
