@@ -14,7 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { getMoviePaletteById, getAllMoviePalettes, type MoviePaletteData } from '@/data/movie-palettes';
 import { explainColorPalette, type ExplainColorPaletteOutput } from '@/ai/flows/explain-color-palette';
-import { Info, Loader2, Search, Image as ImageIcon, AlertCircle, X } from 'lucide-react';
+import { Info, Loader2, Search, Image as ImageIcon, AlertCircle, X, ArrowLeft, ArrowUp } from 'lucide-react';
 import Image from 'next/image';
 import { getColorFrameFolders, type GetColorFrameFoldersOutput } from '@/actions/get-color-frames';
 import { getColorAtPixel, hexToHsv } from '@/lib/color-utils';
@@ -23,7 +23,7 @@ import type { FrameFilesApiOutput } from '@/app/api/frame-files/route';
 import type { TrailerFileApiOutput } from '@/app/api/trailer-file/route';
 import Link from "next/link";
 import { MovieListDialog } from "@/components/movie-list-dialog";
-import { ArrowLeft, ArrowUp } from 'lucide-react';
+import RecommendationExplanationPanel from "@/components/recommendation-explanation-panel";
 
 
 
@@ -35,6 +35,8 @@ type FrameFiles = Record<string, string[]>; // Stores filenames for each color
 
 export default function CinePaletteExplorer(): ReactElement {
   const [isFrameModalOpen, setIsFrameModalOpen] = useState<boolean>(false); // State to control the visibility of the frame modal
+  const [isOpen, setIsOpen] = useState<boolean>(false); // State to control the visibility of the movie list dialog
+  const [suggestion, setSuggestion] = useState<string>(''); // State for the search input suggestion
   const [inputValue, setInputValue] = useState<string>(''); // State to hold the user's input for movie ID or name
   const [isBrowsing, setIsBrowsing] = useState<boolean>(false); // State to indicate if the user is browsing movies
   const [isMovieSelected, setIsMovieSelected] = useState<boolean>(false); // State to indicate if a movie is selected
@@ -57,13 +59,12 @@ export default function CinePaletteExplorer(): ReactElement {
   const [frameErrors, setFrameErrors] = useState<Record<string, Record<string, boolean>>>({}); // State to track loading errors for each frame
   const [frameFiles, setFrameFiles] = useState<FrameFiles>({}); // State to store the filenames of frames for each color
   const [isLoadingFrameFiles, setIsLoadingFrameFiles] = useState<Record<string, boolean>>({}); // State to track loading status of frames for each color
-    const [isOpen, setIsOpen] = useState(false);
   const [showBackToTop, setShowBackToTop] = useState(false);
-  const [suggestion, setSuggestion] = useState<string>(''); // State for autocomplete suggestion
 
   const [recommendedMovie, setRecommendedMovie] = useState<MoviePaletteData | null>(null);
   const [isLoadingRecommendation, setIsLoadingRecommendation] = useState<boolean>(false);
   const [recommendationError, setRecommendationError] = useState<string | null>(null);
+  const [micdValue, setMicdValue] = useState<number | null>(null);
 
   // Define the desired order of colors for display
   const colorOrder = [
@@ -183,7 +184,7 @@ export default function CinePaletteExplorer(): ReactElement {
   }, [selectedColor, selectedMovieId, frameFiles, isLoadingFrameFiles]);
 
   const handleMovieSelect = (event?: FormEvent<HTMLFormElement>) => {
-    event?.preventDefault(); // Prevent default form submission if called from form
+    event?.preventDefault();
     console.log("handleMovieSelect called");
     // If a movie is already selected, don't re-process unless input has changed
     // if (isMovieSelected && selectedMovieId === inputValue.trim().toLowerCase()) return;
@@ -236,12 +237,11 @@ export default function CinePaletteExplorer(): ReactElement {
   const handleBrowseClick = () => {
     setIsBrowsing(true);
     setError(null);
-    setIsOpen(true); // Open the movie list dialog
   };
 
   const handleCancelBrowse = () => {
     setIsBrowsing(false);
-    setInputValue('');
+    // setInputValue(''); // Keep the last input value
     setIsOpen(false); // Close the movie list dialog
 
   };
@@ -264,7 +264,15 @@ export default function CinePaletteExplorer(): ReactElement {
   }, []);
 
   // Calculate Mean Inter-color Distance (MICD) between two palettes
-  const calculateMICD = useCallback((colors1: { r: number; g: number; b: number, count: number }[], colors2: { r: number; g: number; b: number, count: number }[]): number => {
+  const calculateMICD = useCallback((colors1: { r: number; g: number; b: number, count: number }[], colors2: { r: number; g: number; b: number, count: number }[]): number | { 
+    micd: number, 
+    palette1To2: any[], 
+    palette2To1: any[], 
+    totalPixels1: number, 
+    totalPixels2: number,
+    totalCost1: number,
+    totalCost2: number,
+   } => {
     if (!colors1.length || !colors2.length) return Infinity; // Cannot calculate MICD without colors
 
     // Calculate total pixel count for each palette
@@ -272,14 +280,26 @@ export default function CinePaletteExplorer(): ReactElement {
     const totalPixels2 = colors2.reduce((sum, color) => sum + color.count, 0);
 
     let cost1 = 0;
+    const details1: any[] = [];
 
     // For each color in palette 1, find the closest color in palette 2 and calculate deltaE
     for (const color1 of colors1) {
       let minDeltaE = Infinity;
+      let closestColor2: { r: number; g: number; b: number, count: number } | null = null;
       for (const color2 of colors2) {
+
+          // Skip comparison if color values are invalid
           // Assert color values are within the valid range [0, 255]
           if (color1.r < 0 || color1.r > 255 || color1.g < 0 || color1.g > 255 || color1.b < 0 || color1.b > 255) {
-             throw new Error(`Invalid color1 value: ${JSON.stringify(color1)}. Color values must be between 0 and 255.`);
+              console.warn(`Skipping invalid color1 value in MICD calculation: ${JSON.stringify(color1)}`);
+              details1.push({
+                   color: color1,
+                   weight: 0, // Assign a weight of 0 for invalid colors
+                   closestInOtherPalette: null,
+                   deltaE: Infinity, // Assign Infinity deltaE for invalid colors
+                   weightedCost: 0
+               });
+               continue; // Skip to the next color1
           }
           if (color2.r < 0 || color2.r > 255 || color2.g < 0 || color2.g > 255 || color2.b < 0 || color2.b > 255) {
              throw new Error(`Invalid color2 value: ${JSON.stringify(color2)}. Color values must be between 0 and 255.`);
@@ -290,24 +310,38 @@ export default function CinePaletteExplorer(): ReactElement {
 
           // Only consider valid deltaE calculations
           if (currentDeltaE !== undefined && !isNaN(currentDeltaE)) {
-             minDeltaE = Math.min(minDeltaE, currentDeltaE);
+             if (currentDeltaE < minDeltaE) {
+                 minDeltaE = currentDeltaE;
+                 closestColor2 = color2;
+             }
           } else {
             throw new Error(`minDeltaE is Infinity.`);
           }
       }
       if (minDeltaE !== Infinity) {
         const weight = color1.count / totalPixels1;
-        cost1 += (minDeltaE * weight)
+        const weightedCost = minDeltaE * weight;
+        cost1 += weightedCost;
+        details1.push({
+            color: color1,
+            weight: weight,
+            closestInOtherPalette: closestColor2,
+            deltaE: minDeltaE,
+            weightedCost: weightedCost
+        });
       }
+
     }
 
     let cost2 = 0;
+    const details2: any[] = [];
 
     // For each color in palette 2, find the closest color in palette 1 and calculate deltaE
     for (const color2 of colors2) {
       let minDeltaE = Infinity;
+      let closestColor1: { r: number; g: number; b: number, count: number } | null = null;
       for (const color1 of colors1) {
-          // Assert color values are within the valid range [0, 255]
+           // Skip comparison if color values are invalid
           if (color1.r < 0 || color1.r > 255 || color1.g < 0 || color1.g > 255 || color1.b < 0 || color1.b > 255) {
              throw new Error(`Invalid color1 value: ${JSON.stringify(color1)}. Color values must be between 0 and 255.`);
           }
@@ -318,21 +352,42 @@ export default function CinePaletteExplorer(): ReactElement {
           const color2Obj = new Color("srgb", [color2.r / 255, color2.g / 255, color2.b / 255]);
           const currentDeltaE = color2Obj.deltaE2000(color1Obj);
            if (currentDeltaE !== undefined && !isNaN(currentDeltaE)) {
-              minDeltaE = Math.min(minDeltaE, currentDeltaE);
+              if (currentDeltaE < minDeltaE) {
+                  minDeltaE = currentDeltaE;
+                  closestColor1 = color1;
+              }
            }
-          // If a closest color was found in palette 2
-          if (minDeltaE !== Infinity) {
-            const weight = color2.count / totalPixels2;
-            cost2 += (minDeltaE * weight)
-          } else {
-              throw new Error(`minDeltaE is Infinity.`);
-          }
         }
+        if (minDeltaE !== Infinity) {
+             const weight = color2.count / totalPixels2;
+             const weightedCost = minDeltaE * weight;
+             cost2 += weightedCost;
+             details2.push({
+                 color: color2,
+                 weight: weight,
+                 closestInOtherPalette: closestColor1,
+                 deltaE: minDeltaE,
+                 weightedCost: weightedCost
+             });
       }
-    return (cost1 + cost2) / 2;
-  }, []); // Add empty dependency array here
+    }
 
-    const findMostSimilarMovie = useCallback(async () => {
+      // Calculate the final MICD after processing both directions
+      const micd = (cost1 + cost2) / 2;
+      // Return the detailed object including the calculated MICD and details
+      return {
+          micd: micd,
+          palette1To2: details1,
+          palette2To1: details2,
+          totalPixels1: totalPixels1,
+          totalPixels2: totalPixels2,
+          totalCost1: cost1,
+          totalCost2: cost2,
+      };
+  }, []);
+  const [detailedMICDExplanation, setDetailedMICDExplanation] = useState<any>(null); // Moved state declaration outside useCallback
+
+  const findMostSimilarMovie = useCallback(async () => {
         if (!selectedMovieId) {
             setRecommendedMovie(null);
             setRecommendationError(null);
@@ -351,7 +406,7 @@ export default function CinePaletteExplorer(): ReactElement {
                 return;
             }
 
-            let minMICD = Infinity;
+            let minMICD = Infinity as number; // Explicitly type minMICD
             let bestMatchMovie: MoviePaletteDataWithId | null = null;
 
             for (const candidateMovie of allMovies) {
@@ -360,7 +415,9 @@ export default function CinePaletteExplorer(): ReactElement {
                 const candidateColors = await fetchPaletteColors(candidateMovie.id);
                 if (!candidateColors) continue; // Skip if candidate colors can't be fetched
 
-                const micd = calculateMICD(selectedMovieColors, candidateColors);
+                const micdResult = calculateMICD(selectedMovieColors, candidateColors);
+                // Ensure we are comparing numbers
+                const micd = typeof micdResult === 'number' ? micdResult : micdResult.micd;
 
                 if (micd < minMICD) {
                     minMICD = micd;
@@ -369,8 +426,25 @@ export default function CinePaletteExplorer(): ReactElement {
             }
 
             setRecommendedMovie(bestMatchMovie);
+             // Only calculate and store detailed explanation for the best match
             if (!bestMatchMovie) {
+                setDetailedMICDExplanation(null); // Clear detailed explanation if no recommendation found
                 setRecommendationError('No similar palette found.');
+             } else {
+                 // Fetch colors for the best match again specifically for detailed calculation
+                 const bestMatchColors = await fetchPaletteColors(bestMatchMovie.id);
+                 if(selectedMovieColors && bestMatchColors) {
+                      setMicdValue(minMICD);
+                      const detailedResult = calculateMICD(selectedMovieColors, bestMatchColors) as { 
+                        micd: number, 
+                        palette1To2: any[], 
+                        palette2To1: any[], 
+                        totalCost1: number, 
+                        totalCost2: number
+                      };
+                      setDetailedMICDExplanation(detailedResult);
+                 } else {
+                 }
             }
         } catch (error) {
             console.error("Error finding similar movie:", error);
@@ -378,7 +452,7 @@ export default function CinePaletteExplorer(): ReactElement {
         } finally {
             setIsLoadingRecommendation(false);
         }
-    }, [selectedMovieId, fetchPaletteColors, calculateMICD, allMovies]);
+    }, [selectedMovieId, fetchPaletteColors, calculateMICD]); // Depend on calculateMICD, not the version with details
 
      useEffect(() => {
         // Call findMostSimilarMovie when selectedMovieId changes
@@ -690,7 +764,7 @@ export default function CinePaletteExplorer(): ReactElement {
                    setSuggestion(matchingMovie ? matchingMovie.name : '');
                    if (error) setError(null); // Clear error on input
                 }}
-                className="bg-transparent relative z-10 w-full" // Added bg-transparent, relative, z-10
+                className="bg-transparent relative z-10 w-full px-3 py-2 pr-10" // Added bg-transparent, relative, z-10
               />
               <Button type="submit" aria-label="Load Movie Palette">
                 <Search className="mr-2 h-4 w-4" /> Load Palette
@@ -707,14 +781,8 @@ export default function CinePaletteExplorer(): ReactElement {
           )}
           {/* Movie List Dialog */}
           <MovieListDialog
-                isOpen={isOpen}
-                onOpenChange={(open) => {
-                    setIsOpen(open);
-                    if (!open) {
-                        setIsBrowsing(false); // Ensure browsing state is reset if dialog is closed externally
-                    }
-
-                }}
+                isOpen={isBrowsing} // Control dialog visibility by isBrowsing state
+                onOpenChange={setIsBrowsing} // Update isBrowsing when dialog state changes
                 movies={allMovies} // Pass the sorted allMovies array
                 handleMovieTitleClick={handleMovieTitleClick}
             />
@@ -916,13 +984,29 @@ export default function CinePaletteExplorer(): ReactElement {
                             ) : recommendationError ? (
                                 <p className="text-sm text-destructive">{recommendationError}</p>
                             ) : recommendedMovie ? (
-                                <>If you liked this palette, you might also like: {' '} <Button variant="link" onClick={() => setSelectedMovieId(recommendedMovie.id)} className="p-0 h-auto text-lg font-semibold">{recommendedMovie.name}</Button>
-                                </>
+                                <>If you liked this palette, you might also like:{' '}
+                                   <span
+                                     className="text-lg font-semibold text-primary hover:underline cursor-pointer"
+                                     onClick={() => setSelectedMovieId(recommendedMovie.id)}
+                                   >
+                                     {recommendedMovie.name}
+                                   </span>
+                                </> // Keep Button for direct click navigation
                             ) : null
-                            }
-                       </div>
-                  </CardContent>
-               </Card>
+                           }
+                           {selectedMovieData && recommendedMovie && detailedMICDExplanation && (
+                              console.log("detailedMICDExplanation:", detailedMICDExplanation),
+                              // Check if the result is the detailed object before setting state
+                              <RecommendationExplanationPanel
+                                  selectedMovieName={selectedMovieData.name}
+                                  recommendedMovieName={recommendedMovie.name}
+                                  recommendedMovieMICD={micdValue as any}
+                                  explanationDetails={detailedMICDExplanation}
+                              />
+                          )}
+                        </div> {/* End of Movie Recommendation Section */}
+                    </CardContent>
+                </Card>
            </>
           ) : !error && !selectedMovieId && !isBrowsing ? (
             // Initial state message (not browsing)
