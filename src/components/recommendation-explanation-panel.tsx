@@ -34,9 +34,9 @@ const RecommendationExplanationPanel: React.FC<RecommendationExplanationPanelPro
   return (
     <div style={{ fontFamily: 'Arial, sans-serif', padding: '16px' }}>
       <Typography variant="body1" gutterBottom>
-        The movie "{recommendedMovieName}" was recommended based on your selection of "{selectedMovieName}".
+        The movie <i>{recommendedMovieName}</i> was recommended based on your selection of <i>{selectedMovieName}</i>.
         The recommendation is based on the Minimum Color Difference (MICD) model between the two movies.
-        The MICD between "{selectedMovieName}" and "{recommendedMovieName}" is: {recommendedMovieMICD.toFixed(4)}.
+        The MICD between <i>{selectedMovieName}</i> and <i>{recommendedMovieName}</i> is: <b>{recommendedMovieMICD.toFixed(4)}</b>.
       </Typography>
 
       {explanationDetails && (
@@ -47,7 +47,7 @@ const RecommendationExplanationPanel: React.FC<RecommendationExplanationPanelPro
             explanationDetails.palette1To2.length > 0 && (
             <>
             <Typography variant="h5" gutterBottom>
-              Color Matches ({selectedMovieName} to {recommendedMovieName}):
+              Color Matches (<i>{selectedMovieName}</i> to <i>{recommendedMovieName}</i>):
             </Typography>
             <ul>
               {[...(explanationDetails.palette1To2 || [])] // Create a copy to avoid modifying the original array
@@ -57,20 +57,17 @@ const RecommendationExplanationPanel: React.FC<RecommendationExplanationPanelPro
                 })
                 .map((match, index) => (
                 <li key={`1to2-${index}`} style={{ marginBottom: '15px' }}> {/* Added bottom margin */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontWeight: 'normal' }}> {/* Increased gap */}
-                    <div> 
-                      This movie [{(match.color.count / (explanationDetails.totalPixels1 || 1) * 100).toFixed(1)}%]:
-                    </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontWeight: 'normal', justifyContent: 'center' }}> {/* Added justifyContent: 'center' */}
                     <div
                       style={{
                         width: '40px', // Larger tile size
                         height: '40px', // Larger tile size
                         backgroundColor: `rgb(${match.color.r}, ${match.color.g}, ${match.color.b})`,
-                        marginRight: '8px',
                       }}
+                      title={`Weight: ${((match.color.count / (explanationDetails.totalPixels1 || 1)) * 100).toFixed(1)}%`} // Hover text for color weight
                     ></div>
                     <div>
-                      Closest in "{recommendedMovieName}" [{(match.closestInOtherPalette.count / (explanationDetails.totalPixels2 || 1) * 100).toFixed(1)}%]:
+                      &rarr; {/* Right arrow */}
                     </div>
                     <div
                       style={{
@@ -78,6 +75,7 @@ const RecommendationExplanationPanel: React.FC<RecommendationExplanationPanelPro
                         height: '40px', // Larger tile size
                         backgroundColor: `rgb(${match.closestInOtherPalette.r}, ${match.closestInOtherPalette.g}, ${match.closestInOtherPalette.b})`,
                       }}
+                      title={`Weight: ${((match.closestInOtherPalette.count / (explanationDetails.totalPixels2 || 1)) * 100).toFixed(1)}%`} // Hover text for color weight
                     ></div>
                    </div>
                   DeltaE: {match.deltaE.toFixed(2)}, Weighted Cost: {match.weightedCost.toFixed(4)}
@@ -97,7 +95,7 @@ const RecommendationExplanationPanel: React.FC<RecommendationExplanationPanelPro
             explanationDetails.palette2To1.length > 0 && (
               <>
               <Typography variant="h5" gutterBottom sx={{ mt: 2 }}>
-                Color Matches ({recommendedMovieName} to {selectedMovieName}):
+                Color Matches (<i>{recommendedMovieName}</i> to <i>{selectedMovieName}</i>):
               </Typography>
               <ul>
                 {[...(explanationDetails.palette2To1 || [])] // Create a copy to avoid modifying the original array
@@ -107,20 +105,17 @@ const RecommendationExplanationPanel: React.FC<RecommendationExplanationPanelPro
                   })
                   .map((match, index) => (
                   <li key={`2to1-${index}`} style={{ marginBottom: '15px' }}> {/* Added bottom margin */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontWeight: 'normal'}}> {/* Increased gap */}
-                      <div>
-                        {recommendedMovieName} [{(match.color.count / (explanationDetails.totalPixels2 || 1) * 100).toFixed(1)}%]: 
-                      </div>
-                      <div
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontWeight: 'normal', justifyContent: 'center'}}>
+                      <div // Changed to match the structure of 1To2 for consistency
                         style={{
                           width: '40px', // Larger tile size
                           height: '40px', // Larger tile size
                           backgroundColor: `rgb(${match.color.r}, ${match.color.g}, ${match.color.b})`,
                         }}
+                        title={`Weight: ${((match.color.count / (explanationDetails.totalPixels2 || 1)) * 100).toFixed(1)}%`} // Hover text for color weight
                       ></div>
-                      <div>
-                        Closest in this movie [{(match.closestInOtherPalette.count / (explanationDetails.totalPixels1 || 1) * 100).toFixed(1)}%]:
-                        ({match.closestInOtherPalette.r}, {match.closestInOtherPalette.g}, {match.closestInOtherPalette.b}) {/* Added RGB values back */}
+                     <div>
+                        &rarr; {/* Right arrow */}{' '}
                       </div>
 
                       <div
@@ -128,9 +123,10 @@ const RecommendationExplanationPanel: React.FC<RecommendationExplanationPanelPro
                           height: '40px', // Larger tile size
                           backgroundColor: `rgb(${match.closestInOtherPalette.r}, ${match.closestInOtherPalette.g}, ${match.closestInOtherPalette.b})`,
                         }}
+                        title={`Weight: ${((match.closestInOtherPalette.count / (explanationDetails.totalPixels1 || 1)) * 100).toFixed(1)}%`} // Hover text for color weight
                       ></div>
-                    </div>
-                    DeltaE: {match.deltaE.toFixed(2)}, Weighted Cost: {match.weightedCost.toFixed(4)}
+                   </div>
+                  DeltaE: {match.deltaE.toFixed(2)}, Weighted Cost: {match.weightedCost.toFixed(4)}
                 </li>
                 ))}
               </ul>
