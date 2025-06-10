@@ -16,7 +16,7 @@ interface RecommendationExplanationPanelProps {
     }[];
     palette2To1: {
       color: { r: number; g: number; b: number, count: number };
-      closestInOtherPalette?: { r: number; g: number; b: number, count: number };
+      closestInOtherPalette: { r: number; g: number; b: number, count: number };
       deltaE: number;
       weightedCost: number;
     }[];
