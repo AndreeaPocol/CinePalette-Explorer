@@ -995,7 +995,6 @@ export default function CinePaletteExplorer(): ReactElement {
                             ) : null
                            }
                            {selectedMovieData && recommendedMovie && detailedMICDExplanation && (
-                              console.log("detailedMICDExplanation:", detailedMICDExplanation),
                               // Check if the result is the detailed object before setting state
                               <RecommendationExplanationPanel
                                   selectedMovieName={selectedMovieData.name}

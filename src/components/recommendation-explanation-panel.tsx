@@ -1,5 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import Typography from '@mui/material/Typography'; // Assuming Typography from Material UI is still desired
+import Button from '@mui/material/Button';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 
 interface RecommendationExplanationPanelProps {
   selectedMovieName: string;
@@ -31,6 +33,12 @@ const RecommendationExplanationPanel: React.FC<RecommendationExplanationPanelPro
   recommendedMovieMICD,
   explanationDetails,
 }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  const handleToggleExpand = () => {
+    setIsExpanded(!isExpanded);
+  };
+
   return (
     <div style={{ fontFamily: 'Arial, sans-serif', padding: '16px' }}>
       <Typography variant="body1" gutterBottom>
@@ -38,12 +46,16 @@ const RecommendationExplanationPanel: React.FC<RecommendationExplanationPanelPro
         The recommendation is based on the Minimum Color Difference (MICD) model between the two movies.
         The MICD between <i>{selectedMovieName}</i> and <i>{recommendedMovieName}</i> is: <b>{recommendedMovieMICD.toFixed(4)}</b>.
       </Typography>
+      <Button onClick={handleToggleExpand} endIcon={<ExpandMoreIcon sx={{ transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.3s' }} />}>
+        {isExpanded ? 'Hide Explanation' : 'Show Explanation'}
+      </Button>
 
-      {explanationDetails && (
+      {explanationDetails && isExpanded && (
         <>
           {explanationDetails.palette1To2 === null || explanationDetails.palette1To2 === undefined ? (
             console.error('palette1To2 is missing in explanationDetails')
           ) : (
+            isExpanded && explanationDetails.palette1To2.length > 0 && (
             explanationDetails.palette1To2.length > 0 && (
             <>
             <Typography variant="h5" gutterBottom>
@@ -87,6 +99,7 @@ const RecommendationExplanationPanel: React.FC<RecommendationExplanationPanelPro
               </Typography>
             </>
           )
+            )
           )}
 
           {explanationDetails.palette2To1 === null || explanationDetails.palette2To1 === undefined ? (
@@ -135,6 +148,7 @@ const RecommendationExplanationPanel: React.FC<RecommendationExplanationPanelPro
               </Typography>
               </>
             )
+
           )}
         </>
       )}
