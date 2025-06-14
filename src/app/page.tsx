@@ -61,7 +61,7 @@ export default function CinePaletteExplorer(): ReactElement {
   const [isLoadingFrameFiles, setIsLoadingFrameFiles] = useState<Record<string, boolean>>({}); // State to track loading status of frames for each color
   const [showBackToTop, setShowBackToTop] = useState(false);
 
-  const [recommendedMovie, setRecommendedMovie] = useState<MoviePaletteData | null>(null);
+  const [topRecommendations, setTopRecommendations] = useState<{ movie: MoviePaletteDataWithId, micd: number }[]>([]);
   const [isLoadingRecommendation, setIsLoadingRecommendation] = useState<boolean>(false);
   const [recommendationError, setRecommendationError] = useState<string | null>(null);
   const [micdValue, setMicdValue] = useState<number | null>(null);
@@ -330,7 +330,6 @@ export default function CinePaletteExplorer(): ReactElement {
             weightedCost: weightedCost
         });
       }
-
     }
 
     let cost2 = 0;
@@ -386,20 +385,19 @@ export default function CinePaletteExplorer(): ReactElement {
       };
   }, []);
   const [detailedMICDExplanation, setDetailedMICDExplanation] = useState<any>(null); // Moved state declaration outside useCallback
-
   const findMostSimilarMovie = useCallback(async () => {
+        // Update state to store an array of recommendations
         if (!selectedMovieId) {
-            setRecommendedMovie(null);
+            setTopRecommendations([]);
             setRecommendationError(null);
             return;
         }
 
         setIsLoadingRecommendation(true);
-        setRecommendedMovie(null); // Clear previous recommendation
         setRecommendationError(null); // Clear previous error
-
-        try {
-            const selectedMovieColors = await fetchPaletteColors(selectedMovieId);
+        setTopRecommendations([]); // Clear previous recommendations
+ try {
+ const selectedMovieColors = await fetchPaletteColors(selectedMovieId);
             if (!selectedMovieColors) {
                 setRecommendationError('Could not fetch palette colors for the selected movie.');
                 setIsLoadingRecommendation(false);
@@ -407,45 +405,54 @@ export default function CinePaletteExplorer(): ReactElement {
             }
 
             let minMICD = Infinity as number; // Explicitly type minMICD
-            let bestMatchMovie: MoviePaletteDataWithId | null = null;
+            const similarityScores: { movie: MoviePaletteDataWithId, micd: number }[] = [];
 
             for (const candidateMovie of allMovies) {
                 if (candidateMovie.id === selectedMovieId) continue; // Skip the selected movie itself
 
                 const candidateColors = await fetchPaletteColors(candidateMovie.id);
-                if (!candidateColors) continue; // Skip if candidate colors can't be fetched
+                if (!candidateColors || candidateColors.length === 0) continue; // Skip if candidate colors can't be fetched or are empty
 
                 const micdResult = calculateMICD(selectedMovieColors, candidateColors);
                 // Ensure we are comparing numbers
                 const micd = typeof micdResult === 'number' ? micdResult : micdResult.micd;
 
-                if (micd < minMICD) {
-                    minMICD = micd;
-                    bestMatchMovie = candidateMovie;
-                }
+                // Store the similarity score and the movie
+                similarityScores.push({ movie: candidateMovie, micd: micd });
             }
 
-            setRecommendedMovie(bestMatchMovie);
-             // Only calculate and store detailed explanation for the best match
-            if (!bestMatchMovie) {
-                setDetailedMICDExplanation(null); // Clear detailed explanation if no recommendation found
-                setRecommendationError('No similar palette found.');
-             } else {
-                 // Fetch colors for the best match again specifically for detailed calculation
-                 const bestMatchColors = await fetchPaletteColors(bestMatchMovie.id);
-                 if(selectedMovieColors && bestMatchColors) {
-                      setMicdValue(minMICD);
-                      const detailedResult = calculateMICD(selectedMovieColors, bestMatchColors) as { 
-                        micd: number, 
-                        palette1To2: any[], 
-                        palette2To1: any[], 
-                        totalCost1: number, 
-                        totalCost2: number
-                      };
-                      setDetailedMICDExplanation(detailedResult);
+            // Sort by MICD to find the top 3
+            similarityScores.sort((a, b) => a.micd - b.micd);
+
+            // Take the top 3
+            const topThreeRecommendations = similarityScores.slice(0, 3);
+            setTopRecommendations(topThreeRecommendations); // Set the state with the top 3
+
+             // Calculate and store detailed explanation for the *first* best match only
+             if (topThreeRecommendations.length > 0) {
+                      // Fetch colors for the recommended movie to calculate detailed MICD
+                      const recommendedMovieColors = await fetchPaletteColors(topThreeRecommendations[0].movie.id);
+                      if (!recommendedMovieColors) {
+                           console.error(`Failed to fetch colors for recommended movie: ${topThreeRecommendations[0].movie.name}`);
+                           setDetailedMICDExplanation(null); // Clear detailed explanation if colors cannot be fetched
+                      } else {
+                        const detailedResult = calculateMICD(selectedMovieColors, recommendedMovieColors) as {
+                          micd: number,
+                          palette1To2: any[],
+                          palette2To1: any[],
+                          totalCost1: number,
+                          totalCost2: number,
+                        };
+                        setTopRecommendations(topThreeRecommendations); // Set the first recommended movie for the main display
+                        setMicdValue(topThreeRecommendations[0].micd); // Set the MICD for the first recommended movie
+                        setDetailedMICDExplanation(detailedResult);
+                      }
                  } else {
+                  setTopRecommendations([]);
+                  setMicdValue(null);
+                  setDetailedMICDExplanation(null); // Clear detailed explanation if no recommendation found
+                  setRecommendationError('No similar palette found.');
                  }
-            }
         } catch (error) {
             console.error("Error finding similar movie:", error);
             setRecommendationError('An error occurred while finding a recommendation.');
@@ -491,17 +498,15 @@ export default function CinePaletteExplorer(): ReactElement {
      }
    }
 
-  const videoUrl = selectedMovieId ? `https://www.imdb.com/title/${selectedMovieId}/` : '';
-
   const handlePaletteImageError = (e: SyntheticEvent<HTMLImageElement, Event>) => {
       if (selectedMovieData && selectedMovieData.palettePath) {
         console.error('Error loading palette image:', selectedMovieData.palettePath, e);
         setPaletteImageError(true);
-         setError(`Failed to load palette image: ${selectedMovieData.palettePath}. Check if the file exists in the public/palettes folder.`);
+        setError(`Failed to load palette image: ${selectedMovieData.palettePath}. Check if the file exists in the public/palettes folder.`);
       } else {
-         console.error('Error loading palette image, but selectedMovieData or palettePath is missing:', e);
-          setPaletteImageError(true);
-          setError('Failed to load palette image. Movie data might be incomplete.');
+        console.error('Error loading palette image, but selectedMovieData or palettePath is missing:', e);
+        setPaletteImageError(true);
+        setError('Failed to load palette image. Movie data might be incomplete.');
       }
   };
 
@@ -513,7 +518,7 @@ export default function CinePaletteExplorer(): ReactElement {
        console.warn("Palette image not ready for interaction.");
        return; // Image might not be fully loaded or has zero dimensions
     }
-        const rect = img.getBoundingClientRect();
+    const rect = img.getBoundingClientRect();
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
 
@@ -678,9 +683,8 @@ export default function CinePaletteExplorer(): ReactElement {
                 setInputValue('');
                 setError(null);
                 setIsMovieSelected(false);
-                 setSelectedColor(null);
-                  setPaletteImageError(false);
-
+                setSelectedColor(null);
+                setPaletteImageError(false);
    }
 
   useEffect(() => {
@@ -983,26 +987,66 @@ export default function CinePaletteExplorer(): ReactElement {
                                 </div>
                             ) : recommendationError ? (
                                 <p className="text-sm text-destructive">{recommendationError}</p>
-                            ) : recommendedMovie ? (
-                                <>If you liked this palette, you might also like:{' '}
-                                   <span
-                                     className="text-lg font-semibold text-primary hover:underline cursor-pointer"
-                                     onClick={() => setSelectedMovieId(recommendedMovie.id)}
-                                   >
-                                     {recommendedMovie.name}
-                                   </span>
-                                </> // Keep Button for direct click navigation
-                            ) : null
-                           }
-                           {selectedMovieData && recommendedMovie && detailedMICDExplanation && (
-                              // Check if the result is the detailed object before setting state
-                              <RecommendationExplanationPanel
-                                  selectedMovieName={selectedMovieData.name}
-                                  recommendedMovieName={recommendedMovie.name}
-                                  recommendedMovieMICD={micdValue as any}
-                                  explanationDetails={detailedMICDExplanation}
-                              />
-                          )}
+                            ) : topRecommendations && topRecommendations.length > 0 ? (
+                              <>
+                                  If you liked this palette, you might also like:{' '}
+                                     <span
+                                         className="text-lg font-semibold text-primary hover:underline cursor-pointer"
+                                         onClick={() => setSelectedMovieId(topRecommendations[0].movie.id)}
+                                     >
+                                         {topRecommendations[0].movie.name}
+                                     </span>
+
+                                  <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+                                      {topRecommendations.map((recommendation, index) => (
+                                          <Card key={recommendation.movie.id} className="bg-card border border-border rounded-lg shadow-sm overflow-hidden">
+                                              <CardContent className="p-3 flex flex-col items-center text-center">
+                                              <div className="text-4xl font-bold text-primary mb-2">{index + 1}</div> {/* Big number */}
+                                                  {recommendation.movie.youtubeKey && (
+                                                        <div className="relative w-full aspect-video mb-2 rounded overflow-hidden border border-muted">
+                                                            <iframe
+                                                                src={`https://www.youtube.com/embed/${recommendation.movie.youtubeKey}`}
+                                                                className="object-cover"
+                                                                width="100%"
+                                                                height="100%"
+                                                                allow="accelerometer; clipboard-write; encrypted-media; gyroscope; web-share"
+                                                            />
+                                                        </div>
+                                                    )}
+                                                    <span
+                                                        className="text-base font-semibold text-primary hover:underline cursor-pointer"
+                                                        onClick={() => setSelectedMovieId(recommendation.movie.id)}
+                                                    >
+                                                        {recommendation.movie.name}
+                                                  </span>
+                                                  <p className="text-sm text-muted-foreground">MICD: {recommendation.micd.toFixed(2)}</p>
+                                                  {recommendation.movie.palettePath && (
+                                                        <div className="mt-2 w-full flex justify-center">
+                                                            <Image
+                                                                src={recommendation.movie.palettePath}
+                                                                alt={`Color palette for ${recommendation.movie.name}`}
+                                                                width={200} // Adjust width as needed
+                                                                height={20} // Adjust height as needed
+                                                                className="rounded border border-muted shadow-inner object-contain w-full max-w-xs"
+                                                            />
+                                                        </div>
+                                                    )}
+                                              </CardContent>
+                                          </Card>
+                                      ))}
+                                  </div>
+                              </>
+                          ) : null
+                         }
+                         {selectedMovieData && topRecommendations && topRecommendations.length > 0 && detailedMICDExplanation && (
+                            // Check if the result is the detailed object before setting state
+                            <RecommendationExplanationPanel
+                                selectedMovieName={selectedMovieData.name}
+                                recommendedMovieName={topRecommendations[0].movie.name}
+                                recommendedMovieMICD={topRecommendations[0].micd}
+                                explanationDetails={detailedMICDExplanation}
+                            />
+                        )}
                         </div> {/* End of Movie Recommendation Section */}
                     </CardContent>
                 </Card>
