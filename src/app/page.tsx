@@ -875,9 +875,26 @@ export default function CinePaletteExplorer(): ReactElement {
                 </div>
                 {/* Color Palette Section */}
                <Card className="mt-6 bg-card border border-border rounded-lg shadow-sm overflow-hidden">
-                  <CardHeader className="p-4 border-b border-border bg-muted/40">
-                    <CardTitle className="text-xl font-semibold text-center text-foreground">Color Palette for {selectedMovieData.name}</CardTitle>
-                      <CardDescription className="text-center text-muted-foreground text-sm">Click on the palette to select a color category.</CardDescription>
+                  <CardHeader className="p-4 border-b border-border bg-muted/40 flex flex-row items-center justify-between"> {/* Added flex properties */}
+                      <div> {/* Wrap title and description */}
+                          <CardTitle className="text-xl font-semibold text-foreground">
+                              {selectedColor ? `Frames for ${selectedColor.charAt(0).toUpperCase() + selectedColor.slice(1)}` : "Movie Frames by Color"}
+                          </CardTitle>
+                          <CardDescription className="text-muted-foreground text-sm">
+                              {selectedColor ? `Showing frames where ${selectedColor} is dominant. Click a frame for details.` : "Select a dominant color category from the palette above."}
+                          </CardDescription>
+                      </div>
+                      {selectedColor && ( // Only show the clear button when a color is selected
+                          <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => setSelectedColor(null)}
+                              aria-label="Clear color selection"
+                              className="ml-2" // Add some margin to the left
+                          >
+                              <X className="h-5 w-5" />
+                          </Button>
+                      )}
                   </CardHeader>
                   <CardContent className="p-4 md:p-6">
                      {selectedMovieData.palettePath && !paletteImageError && (
