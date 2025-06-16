@@ -40,10 +40,10 @@ const prompt = ai.definePrompt({
   },
   prompt: `You are a movie visual analysis expert.
 
-You are analyzing the movie with ID {{{movieId}}}.
+  You are analyzing the movie with ID {{{movieId}}}.
 
-Explain why the color {{{color}}} is present in the color palette for this movie.  Reference specific scenes, themes, or artistic choices in the movie to justify your explanation.
-`,
+  Explain why the color {{{color}}} is present in the color palette for this movie.  Reference specific scenes, themes, or artistic choices in the movie to justify your explanation.
+  `,
 });
 
 const explainColorPaletteFlow = ai.defineFlow<
