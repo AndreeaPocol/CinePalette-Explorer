@@ -1,5 +1,6 @@
 'use client';
 
+import munkres from 'munkres';
 import Color from 'colorjs.io';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, } from "@/components/ui/tooltip";
 import type { ReactElement, SyntheticEvent, ReactNode } from 'react';
@@ -56,6 +57,7 @@ export default function CinePaletteExplorer(): ReactElement {
   const [isLoadingRecommendation, setIsLoadingRecommendation] = useState<boolean>(false);
   const [recommendationError, setRecommendationError] = useState<string | null>(null);
   const [micdValue, setMicdValue] = useState<number | null>(null);
+  const [implementation, setImplementation] = useState<'hungarian' | 'micd'>('hungarian'); // State for implementation method
 
   // Define the desired order of colors for display
   const colorOrder = [
@@ -168,7 +170,6 @@ export default function CinePaletteExplorer(): ReactElement {
 
   const handleMovieSelect = (event?: FormEvent<HTMLFormElement>) => {
     event?.preventDefault();
-    console.log("handleMovieSelect called");
     // If a movie is already selected, don't re-process unless input has changed
     // if (isMovieSelected && selectedMovieId === inputValue.trim().toLowerCase()) return;
     const trimmedInput = inputValue.trim(); // Trim whitespace from the input value
@@ -235,120 +236,176 @@ export default function CinePaletteExplorer(): ReactElement {
   }, []);
 
   // Calculate Mean Inter-color Distance (MICD) between two palettes
-  const calculateMICD = useCallback((colors1: { r: number; g: number; b: number, count: number }[], colors2: { r: number; g: number; b: number, count: number }[]): number | { 
+  const calculateMICD = useCallback((colors1: { r: number; g: number; b: number, count: number }[], colors2: { r: number; g: number; b: number, count: number }[]): number | {
     micd: number, 
-    palette1To2: any[], 
-    palette2To1: any[], 
-    totalPixels1: number, 
+    palette1To2: any[],
+    palette2To1: any[],
+    totalPixels1: number,
     totalPixels2: number,
     totalCost1: number,
     totalCost2: number,
-  } => {
-    if (!colors1.length || !colors2.length) return Infinity; // Cannot calculate MICD without colors
+  } | { micd: number } => {
+    const numColors1 = colors1.length;
+    const numColors2 = colors2.length;
+    if (!numColors1 || !numColors2) return Infinity;
 
-    // Calculate total pixel count for each palette
     const totalPixels1 = colors1.reduce((sum, color) => sum + color.count, 0);
     const totalPixels2 = colors2.reduce((sum, color) => sum + color.count, 0);
 
-    let cost1 = 0;
-    const details1: any[] = [];
+    if (implementation === 'hungarian') {
+      // Use the Hungarian algorithm to find the minimum weight perfect matching
+      // Create the cost matrix based on Delta E values
+      // Determine the dimensions of the cost matrix
+      const size = Math.max(numColors1, numColors2);
+      // Initialize costMatrix with padding (Infinity) for potential extra rows
+      const costMatrix: number[][] = Array.from({ length: size }, () => Array(size).fill(Infinity));
 
-    // For each color in palette 1, find the closest color in palette 2 and calculate deltaE
-    for (const color1 of colors1) {
+      // Fill in the actual Delta E values
+      for (let i = 0; i < numColors1; i++) { // Iterate up to the actual number of colors in palette 1
+        for (let j = 0; j < numColors2; j++) {
+          const color1 = colors1[i];
+          const color2 = colors2[j];
+
+          // Ensure color objects are created within the loop
+          const color1Obj = new Color("srgb", [color1.r / 255, color1.g / 255, color1.b / 255]).to("lab");
+          const color2Obj = new Color("srgb", [color2.r / 255, color2.g / 255, color2.b / 255]).to("lab");
+
+          const deltaE = color1Obj.deltaE2000(color2Obj);
+
+          if (deltaE !== undefined && !isNaN(deltaE)) {
+            costMatrix[i][j] = deltaE;
+          } else {
+            // Keep as Infinity if calculation fails
+            console.warn(`Delta E calculation failed for colors: ${JSON.stringify(color1)} and ${JSON.stringify(color2)}`);
+          }
+        }
+      }
+
+      const result = munkres(costMatrix); // Pass the cost matrix to the execute method
+
+      // The result is an array of [row, col] pairs representing the optimal assignment
+      const matchedPairs: { color1Index: number; color2Index: number; deltaE: number }[] = result
+        .filter((pair: [number, number]) => pair[0] < numColors1 && pair[1] < numColors2) // Filter out padding matches
+        .map((pair: [number, number]) => {
+          const color1 = colors1[pair[0]];
+          const color2 = colors2[pair[1]];
+          // Recalculate deltaE for the matched pair using original colors
+          const color1Obj = new Color("srgb", [color1.r / 255, color1.g / 255, color1.b / 255]).to("lab");
+          const color2Obj = new Color("srgb", [color2.r / 255, color2.g / 255, color2.b / 255]).to("lab");
+          const deltaE = color1Obj.deltaE2000(color2Obj);
+          return {
+            color1Index: pair[0],
+            color2Index: pair[1],
+            deltaE: deltaE !== undefined && !isNaN(deltaE) ? deltaE : Infinity, // Use calculated deltaE or Infinity
+          };
+        });
+
+      // Calculate the total cost of the matching
+      const totalCost = matchedPairs.reduce((sum, pair) => sum + pair.deltaE, 0);
+
+      // The MICD in this context is the average deltaE of the matched pairs
+      const micd = matchedPairs.length > 0 ? totalCost / matchedPairs.length : Infinity;
+
+      return {
+        micd: micd,
+        palette1To2: matchedPairs.map(pair => ({
+          color: colors1[pair.color1Index],
+          closestInOtherPalette: colors2[pair.color2Index],
+          deltaE: pair.deltaE,
+        })),
+        palette2To1: matchedPairs.map(pair => ({
+          color: colors2[pair.color2Index],
+          closestInOtherPalette: colors1[pair.color2Index], // Matched pairs are the same from both perspectives
+          deltaE: pair.deltaE,
+        })),
+        totalPixels1: totalPixels1,
+        totalPixels2: totalPixels2,
+        totalCost1: totalCost / numColors1, // Total cost is the average of deltaEs of the matches
+        totalCost2: totalCost / numColors2, // Average for the other palette in a 1-to-1 matching
+      };
+    } else if (implementation === 'micd') {
+      // Original MICD Calculation Logic (Mean Inter-color Distance)
+      // This calculates the average of the minimum Delta E for each color in palette 1 to any color in palette 2.
+      // This is NOT the Hungarian algorithm and doesn't find an optimal one-to-one matching.
+      let totalMinDeltaE1 = 0;
+      const palette1To2 = colors1.map(color1 => {
       let minDeltaE = Infinity;
-      let closestColor2: { r: number; g: number; b: number, count: number } | null = null;
+      let closestColor2 = null;
       for (const color2 of colors2) {
         // Skip comparison if color values are invalid
-        // Assert color values are within the valid range [0, 255]
         if (color1.r < 0 || color1.r > 255 || color1.g < 0 || color1.g > 255 || color1.b < 0 || color1.b > 255) {
-          throw new Error(`Invalid color1 value: ${JSON.stringify(color1)}. Color values must be between 0 and 255.`);
+          console.warn(`Invalid color1 value in MICD calculation: ${JSON.stringify(color1)}. Skipping.`);
+          continue;
         }
         if (color2.r < 0 || color2.r > 255 || color2.g < 0 || color2.g > 255 || color2.b < 0 || color2.b > 255) {
-          throw new Error(`Invalid color2 value: ${JSON.stringify(color2)}. Color values must be between 0 and 255.`);
+          console.warn(`Invalid color2 value in MICD calculation: ${JSON.stringify(color2)}. Skipping.`);
+          continue;
         }
-        // Convert to CIELAB before calculating deltaE2000
+
         const color1Obj = new Color("srgb", [color1.r / 255, color1.g / 255, color1.b / 255]).to("lab");
         const color2Obj = new Color("srgb", [color2.r / 255, color2.g / 255, color2.b / 255]).to("lab");
+        const deltaE = color1Obj.deltaE2000(color2Obj);
 
-        const currentDeltaE = color1Obj.deltaE2000(color2Obj);
-
-        // Only consider valid deltaE calculations
-        if (currentDeltaE !== undefined && !isNaN(currentDeltaE)) {
-          if (currentDeltaE < minDeltaE) {
-            minDeltaE = currentDeltaE;
-            closestColor2 = color2;
-          }
-        } else {
-          throw new Error(`minDeltaE is Infinity.`);
+        if (deltaE !== undefined && !isNaN(deltaE) && deltaE < minDeltaE) {
+          minDeltaE = deltaE;
+          closestColor2 = color2;
         }
       }
       if (minDeltaE !== Infinity) {
-        const weight = color1.count / totalPixels1;
-        const weightedCost = minDeltaE * weight;
-        cost1 += weightedCost;
-        details1.push({
-          color: color1,
-          weight: weight,
-          closestInOtherPalette: closestColor2,
-          deltaE: minDeltaE,
-          weightedCost: weightedCost
-        });
+        totalMinDeltaE1 += minDeltaE;
       }
-    }
+      return { color: color1, closestInOtherPalette: closestColor2, deltaE: minDeltaE };
+    });
+      let totalMinDeltaE2 = 0;
+      const palette2To1 = colors2.map(color2 => {
+        let minDeltaE = Infinity;
+        let closestColor1 = null;
+        for (const color1 of colors1) {
+          // Skip comparison if color values are invalid
+          if (color1.r < 0 || color1.r > 255 || color1.g < 0 || color1.g > 255 || color1.b < 0 || color1.b > 255) {
+            console.warn(`Invalid color1 value in MICD calculation: ${JSON.stringify(color1)}. Skipping.`);
+            continue;
+          }
+          if (color2.r < 0 || color2.r > 255 || color2.g < 0 || color2.g > 255 || color2.b < 0 || color2.b > 255) {
+            console.warn(`Invalid color2 value in MICD calculation: ${JSON.stringify(color2)}. Skipping.`);
+            continue;
+          }
+          const color1Obj = new Color("srgb", [color1.r / 255, color1.g / 255, color1.b / 255]).to("lab");
+          const color2Obj = new Color("srgb", [color2.r / 255, color2.g / 255, color2.b / 255]).to("lab");
+          const deltaE = color2Obj.deltaE2000(color1Obj); // Calculate Delta E in the other direction
 
-    let cost2 = 0;
-    const details2: any[] = [];
-
-    // For each color in palette 2, find the closest color in palette 1 and calculate deltaE
-    for (const color2 of colors2) {
-      let minDeltaE = Infinity;
-      let closestColor1: { r: number; g: number; b: number, count: number } | null = null;
-      for (const color1 of colors1) {
-        // Skip comparison if color values are invalid
-        if (color1.r < 0 || color1.r > 255 || color1.g < 0 || color1.g > 255 || color1.b < 0 || color1.b > 255) {
-          throw new Error(`Invalid color1 value: ${JSON.stringify(color1)}. Color values must be between 0 and 255.`);
-        }
-        if (color2.r < 0 || color2.r > 255 || color2.g < 0 || color2.g > 255 || color2.b < 0 || color2.b > 255) {
-          throw new Error(`Invalid color2 value: ${JSON.stringify(color2)}. Color values must be between 0 and 255.`);
-        }
-        // Convert to CIELAB before calculating deltaE2000
-        const color1Obj = new Color("srgb", [color1.r / 255, color1.g / 255, color1.b / 255]).to("lab");
-        const color2Obj = new Color("srgb", [color2.r / 255, color2.g / 255, color2.b / 255]).to("lab");
-        const currentDeltaE = color2Obj.deltaE2000(color1Obj);
-        if (currentDeltaE !== undefined && !isNaN(currentDeltaE)) {
-          if (currentDeltaE < minDeltaE) {
-            minDeltaE = currentDeltaE;
+          if (deltaE !== undefined && !isNaN(deltaE) && deltaE < minDeltaE) {
+            minDeltaE = deltaE;
             closestColor1 = color1;
           }
         }
-      }
-      if (minDeltaE !== Infinity) {
-        const weight = color2.count / totalPixels2;
-        const weightedCost = minDeltaE * weight;
-        cost2 += weightedCost;
-        details2.push({
-          color: color2,
-          weight: weight,
-          closestInOtherPalette: closestColor1,
-          deltaE: minDeltaE,
-          weightedCost: weightedCost
-        });
-      }
-    }
+        if (minDeltaE !== Infinity) {
+          totalMinDeltaE2 += minDeltaE;
+        }
+        return { color: color2, closestInOtherPalette: closestColor1, deltaE: minDeltaE };
+      });
 
-    // Calculate the final MICD after processing both directions
-    const micd = (cost1 + cost2) / 2;
-    // Return the detailed object including the calculated MICD and details
-    return {
-      micd: micd,
-      palette1To2: details1,
-      palette2To1: details2,
-      totalPixels1: totalPixels1,
-      totalPixels2: totalPixels2,
-      totalCost1: cost1,
-      totalCost2: cost2,
-    };
-  }, []);
+      // Calculate the average of the average minimum Delta E from both perspectives
+      const avgMinDeltaE1 = numColors1 > 0 ? totalMinDeltaE1 / numColors1 : Infinity;
+      const avgMinDeltaE2 = numColors2 > 0 ? totalMinDeltaE2 / numColors2 : Infinity;
+
+      const micd = (avgMinDeltaE1 + avgMinDeltaE2) / 2;
+
+      return {
+        micd: micd,
+        palette1To2: palette1To2,
+        palette2To1: palette2To1,
+        totalPixels1: totalPixels1,
+        totalPixels2: totalPixels2,
+        totalCost1: totalMinDeltaE1,
+        totalCost2: totalMinDeltaE2,
+      };
+    }
+    // Should not reach here if implementation is correctly 'hungarian' or 'micd'
+    console.error(`Unknown implementation method: ${implementation}`);
+    return Infinity;
+  }, [implementation]); // Add implementation to useCallback dependencies
+
   const [detailedMICDExplanation, setDetailedMICDExplanation] = useState<any>(null); // Moved state declaration outside useCallback
   const findMostSimilarMovie = useCallback(async () => {
     // Update state to store an array of recommendations
@@ -377,6 +434,7 @@ export default function CinePaletteExplorer(): ReactElement {
         if (!candidateColors || candidateColors.length === 0) continue; // Skip if candidate colors can't be fetched or are empty
 
         const micdResult = calculateMICD(selectedMovieColors, candidateColors);
+
         // Ensure we are comparing numbers
         const micd = typeof micdResult === 'number' ? micdResult : micdResult.micd;
 
