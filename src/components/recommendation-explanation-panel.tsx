@@ -94,9 +94,9 @@ const RecommendationExplanationPanel: React.FC<RecommendationExplanationPanelPro
                 </li>
               ))}
             </ul>
-              <Typography variant="h6">
+              {/* <Typography variant="h6">
                 The total weighted cost for this color mapping is: {explanationDetails.totalCost1.toFixed(4)}.
-              </Typography>
+              </Typography> */}
             </>
           )
             )

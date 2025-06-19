@@ -2,6 +2,7 @@
 
 import munkres from 'munkres';
 import Color from 'colorjs.io';
+import path from 'path';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, } from "@/components/ui/tooltip";
 import type { ReactElement, SyntheticEvent, ReactNode } from 'react';
 import React, { useState, useEffect, useCallback, FormEvent, useRef } from 'react';
@@ -38,6 +39,7 @@ export default function CinePaletteExplorer(): ReactElement {
 
   const [selectedMovieId, setSelectedMovieId] = useState<string>(''); // State to store the selected movie's ID
   const [selectedMovieData, setSelectedMovieData] = useState<MoviePaletteData | null>(null); // State to store the data of the selected movie
+  const [selectedMoviePalettePath, setSelectedMoviePalettePath] = useState<string | null>(null); // State to store the palette path of the selected movie
   const paletteImageRef = useRef<HTMLImageElement>(null); // Ref to the palette image element
   const [error, setError] = useState<string | null>(null); // State to store error messages
   const [colorFolders, setColorFolders] = useState<string[]>([]); // State to store the list of color folders for the selected movie
@@ -79,6 +81,7 @@ export default function CinePaletteExplorer(): ReactElement {
         const movieData = getMoviePaletteById(selectedMovieId);
         if (movieData) {
           setSelectedMovieData(movieData);
+          setSelectedMoviePalettePath(path.join(process.cwd(), 'palettes', `${movieData.id}.png`));
           setIsMovieSelected(true);
           setError(null);
           setPaletteImageError(false);
@@ -119,6 +122,7 @@ export default function CinePaletteExplorer(): ReactElement {
         } 
         else {
           setSelectedMovieData(null);
+          setSelectedMoviePalettePath(null);
           setError(`Data inconsistency: Could not find data for valid ID ${selectedMovieId}.`);
           setIsMovieSelected(false);
           setColorFolders([]);
@@ -129,6 +133,7 @@ export default function CinePaletteExplorer(): ReactElement {
         }
       } else {
         setSelectedMovieData(null);
+        setSelectedMoviePalettePath(null);
         setColorFolders([]);
         setPaletteImageError(false);
         setFrameErrors({});
@@ -185,6 +190,7 @@ export default function CinePaletteExplorer(): ReactElement {
       // Reset states before setting new movie ID to trigger effects correctly
       setSelectedMovieId('');
       setSelectedMovieData(null);
+      setSelectedMoviePalettePath(null);
       setColorFolders([]);
       setFrameFiles({});
       setFrameErrors({});
@@ -203,6 +209,7 @@ export default function CinePaletteExplorer(): ReactElement {
       // Clear previous movie data if movie not found
       setSelectedMovieId('');
       setSelectedMovieData(null);
+      setSelectedMoviePalettePath(null);
       setIsMovieSelected(false);
       setColorFolders([]);
       setFrameFiles({});
@@ -488,10 +495,10 @@ export default function CinePaletteExplorer(): ReactElement {
   }, [selectedMovieId, findMostSimilarMovie]); // Include findMostSimilarMovie in dependencies
 
   const handlePaletteImageError = (e: SyntheticEvent<HTMLImageElement, Event>) => {
-    if (selectedMovieData && selectedMovieData.palettePath) {
-      console.error('Error loading palette image:', selectedMovieData.palettePath, e);
+    if (selectedMovieData && selectedMoviePalettePath) {
+      console.error('Error loading palette image:', selectedMoviePalettePath, e);
       setPaletteImageError(true);
-      setError(`Failed to load palette image: ${selectedMovieData.palettePath}. Check if the file exists in the public/palettes folder.`);
+      setError(`Failed to load palette image: ${selectedMoviePalettePath}. Check if the file exists in the public/palettes folder.`);
     } else {
       console.error('Error loading palette image, but selectedMovieData or palettePath is missing:', e);
       setPaletteImageError(true);
@@ -501,7 +508,7 @@ export default function CinePaletteExplorer(): ReactElement {
 
   // Handle clicks on the color palette image
   const handlePaletteClick = (event: React.MouseEvent<HTMLImageElement, MouseEvent>) => {
-    if (!selectedMovieData?.palettePath || paletteImageError) return; // Don't process clicks if image failed to load
+    if (!selectedMoviePalettePath || paletteImageError) return; // Don't process clicks if image failed to load
     const img = paletteImageRef.current;
     if (!img || !img.complete || img.naturalWidth === 0) {
       console.warn("Palette image not ready for interaction.");
@@ -661,6 +668,7 @@ export default function CinePaletteExplorer(): ReactElement {
   const handleBackToHomePage = () => {
     setSelectedMovieId('');
     setSelectedMovieData(null);
+    setSelectedMoviePalettePath(null);
     setInputValue('');
     setError(null);
     setIsMovieSelected(false);
@@ -871,11 +879,11 @@ export default function CinePaletteExplorer(): ReactElement {
                     )}
                 </CardHeader>
                 <CardContent className="p-4 md:p-6">
-                  {selectedMovieData.palettePath && !paletteImageError && (
+                  {selectedMoviePalettePath && !paletteImageError && (
                       <div className="mb-6 flex justify-center cursor-pointer" onClick={handlePaletteClick} title="Click to select a color category">
                         <Image
                           key={`palette-${selectedMovieId}`} // Add key for potential re-renders
-                          src={selectedMovieData.palettePath}
+                          src={selectedMoviePalettePath}
                           alt={`Visual color palette representation for ${selectedMovieData.name}`}
                           width={800} // Adjust width as needed
                           height={60} // Adjust height as needed
@@ -1010,10 +1018,10 @@ export default function CinePaletteExplorer(): ReactElement {
                                       {recommendation.movie.name}
                                   </span>
                                   <p className="text-sm text-muted-foreground">MICD: {recommendation.micd.toFixed(2)}</p>
-                                  {recommendation.movie.palettePath && (
+                                  {`/palettes/${recommendation.movie.id}.png` && (
                                     <div className="mt-2 w-full flex justify-center">
                                       <Image
-                                        src={recommendation.movie.palettePath}
+                                        src={`/palettes/${recommendation.movie.id}.png`}
                                         alt={`Color palette for ${recommendation.movie.name}`}
                                         width={200} // Adjust width as needed
                                         height={20} // Adjust height as needed
