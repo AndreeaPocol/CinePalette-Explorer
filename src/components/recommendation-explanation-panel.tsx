@@ -90,7 +90,7 @@ const RecommendationExplanationPanel: React.FC<RecommendationExplanationPanelPro
                       title={`Weight: ${((match.closestInOtherPalette.count / (explanationDetails.totalPixels2 || 1)) * 100).toFixed(1)}%`} // Hover text for color weight
                     ></div>
                    </div>
-                  DeltaE: {match.deltaE.toFixed(2)}, Weighted Cost: {match.weightedCost.toFixed(4)}
+                  {/* DeltaE: {match.deltaE.toFixed(2)}, Weighted Cost: {match.weightedCost.toFixed(4)} */}
                 </li>
               ))}
             </ul>
@@ -107,9 +107,9 @@ const RecommendationExplanationPanel: React.FC<RecommendationExplanationPanelPro
           ) : (
             explanationDetails.palette2To1.length > 0 && (
               <>
-              <Typography variant="h5" gutterBottom sx={{ mt: 2 }}>
+              {/* <Typography variant="h5" gutterBottom sx={{ mt: 2 }}>
                 Color Matches (<i>{recommendedMovieName}</i> to <i>{selectedMovieName}</i>):
-              </Typography>
+              </Typography> */}
               <ul>
                 {[...(explanationDetails.palette2To1 || [])] // Create a copy to avoid modifying the original array
                   .sort((a, b) => {
@@ -125,7 +125,7 @@ const RecommendationExplanationPanel: React.FC<RecommendationExplanationPanelPro
                           height: '40px', // Larger tile size
                           backgroundColor: `rgb(${match.color.r}, ${match.color.g}, ${match.color.b})`,
                         }}
-                        title={`Weight: ${((match.color.count / (explanationDetails.totalPixels2 || 1)) * 100).toFixed(1)}%`} // Hover text for color weight
+                        // title={`Weight: ${((match.color.count / (explanationDetails.totalPixels2 || 1)) * 100).toFixed(1)}%`} // Hover text for color weight
                       ></div>
                      <div>
                         &rarr; {/* Right arrow */}{' '}
@@ -136,16 +136,16 @@ const RecommendationExplanationPanel: React.FC<RecommendationExplanationPanelPro
                           height: '40px', // Larger tile size
                           backgroundColor: `rgb(${match.closestInOtherPalette.r}, ${match.closestInOtherPalette.g}, ${match.closestInOtherPalette.b})`,
                         }}
-                        title={`Weight: ${((match.closestInOtherPalette.count / (explanationDetails.totalPixels1 || 1)) * 100).toFixed(1)}%`} // Hover text for color weight
+                        // title={`Weight: ${((match.closestInOtherPalette.count / (explanationDetails.totalPixels1 || 1)) * 100).toFixed(1)}%`} // Hover text for color weight
                       ></div>
                    </div>
-                  DeltaE: {match.deltaE.toFixed(2)}, Weighted Cost: {match.weightedCost.toFixed(4)}
+                  {/* DeltaE: {match.deltaE.toFixed(2)}, Weighted Cost: {match.weightedCost.toFixed(4)} */}
                 </li>
                 ))}
               </ul>
-              <Typography variant="h6">
+              {/* <Typography variant="h6">
                 The total weighted cost for this color mapping is: {explanationDetails.totalCost2.toFixed(4)}.
-              </Typography>
+              </Typography> */}
               </>
             )
 
