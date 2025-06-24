@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { getMoviePaletteById, getAllMoviePalettes, type MoviePaletteData } from '@/data/movie-palettes';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Info, Loader2, Search, Image as ImageIcon, AlertCircle, X, ArrowLeft, ArrowUp } from 'lucide-react';
 import Image from 'next/image';
 import { getColorFrameFolders, type GetColorFrameFoldersOutput } from '@/actions/get-color-frames';
@@ -21,8 +22,9 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import type { FrameFilesApiOutput } from '@/app/api/frame-files/route';
 import type { TrailerFileApiOutput } from '@/app/api/trailer-file/route';
 import Link from "next/link";
+import { findMoviesByMood } from '@/movie-mood-finder';
 import { MovieListDialog } from "@/components/movie-list-dialog";
-import RecommendationExplanationPanel from "@/components/recommendation-explanation-panel";
+import RecommendationExplanationPanel from "@/components/recommendation-explanation-panel";import type { MoviePaletteDataWithColorCount } from '@/movie-mood-finder';
 
 
 type MoviePaletteDataWithId = MoviePaletteData & { id: string };
@@ -59,7 +61,12 @@ export default function CinePaletteExplorer(): ReactElement {
   const [isLoadingRecommendation, setIsLoadingRecommendation] = useState<boolean>(false);
   const [recommendationError, setRecommendationError] = useState<string | null>(null);
   const [micdValue, setMicdValue] = useState<number | null>(null);
-  const [implementation, setImplementation] = useState<'hungarian' | 'micd'>('hungarian'); // State for implementation method
+
+  const [moodGenre, setMoodGenre] = useState<string>('');
+  const [moodColor, setMoodColor] = useState<string>('');
+  const [moodMovies, setMoodMovies] = useState<MoviePaletteDataWithColorCount[]>([]);
+  const [isLoadingMoodSearch, setIsLoadingMoodSearch] = useState<boolean>(false);
+  const [implementation, setImplementation] = useState<'hungarian' | 'micd'>('micd'); // State for implementation method
 
   // Define the desired order of colors for display
   const colorOrder = [
@@ -688,9 +695,52 @@ export default function CinePaletteExplorer(): ReactElement {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
+  // Extract unique genres from allMovies
+  const uniqueGenres = Array.from(new Set(allMovies.flatMap(movie => movie.genres || []))).sort();
+
+  // Predefined list of colors
+  const moodColors = ['Red', 'Orange', 'Yellow', 'Green', 'Cyan', 'Blue', 'Purple', 'Pink'];
+
+  const handleMoodGenreChange = (value: string) => {
+    setMoodGenre(value);
+  };
+
   const scrollToTop = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
+
+  // Function to handle mood search
+  const handleMoodSearch = async () => {
+    console.log("handleMoodSearch triggered");
+    console.log('Mood Genre:', moodGenre, 'Mood Color:', moodColor);
+    if (!moodGenre || !moodColor) {
+      setError("Please enter both a genre and a color for the mood search.");
+      setMoodMovies([]);
+      return;
+    }
+    setIsLoadingMoodSearch(true);
+    try {
+      const result = findMoviesByMood(moodGenre, moodColor);
+      // Await the promise returned by findMoviesByMood and then log and set the state
+      result.then((moodMoviesResult) => {
+      console.log('findMoviesByMood result (Promise):', result);
+      console.log('Resolved mood movies result:', moodMoviesResult);
+      setMoodMovies(moodMoviesResult);
+      console.log('Mood movies set:', moodMoviesResult);
+      setIsLoadingMoodSearch(false);
+      setError(null);
+      });
+    } catch (err: any) {
+      console.error("Error during mood search:", err);
+      setError(`An error occurred during the mood search: ${err.message || 'Unknown error'}`);
+      setIsLoadingMoodSearch(false);
+      setMoodMovies([]);
+    } finally {
+      // This block will execute regardless of success or error
+      // setIsLoadingMoodSearch(false); // Already handled in .then and .catch for clarity with console logs
+    }
+  };
+
 
   return (
     <div className="container mx-auto p-4 md:p-8 min-h-screen flex flex-col items-center relative">
@@ -730,7 +780,7 @@ export default function CinePaletteExplorer(): ReactElement {
                   // Optionally clear error when user starts typing
                   if (error) setError(null);
                 }}
-                placeholder="Search"
+                placeholder="Search by movie ID or name"
                 onKeyDown={(e) => {
                   if (e.key === 'Tab' && suggestion) {
                     e.preventDefault();
@@ -775,6 +825,81 @@ export default function CinePaletteExplorer(): ReactElement {
             movies={allMovies} // Pass the sorted allMovies array
             handleMovieTitleClick={handleMovieTitleClick}
           />
+          {/* Mood Search Section */}
+          <Card className="w-full shadow-md mb-6 bg-muted/40 border border-border rounded-lg">
+            <CardHeader className="p-4 border-b border-border">
+              <CardTitle className="text-xl font-semibold text-center text-foreground">Find Movies by Mood</CardTitle>
+              <CardDescription className="text-center text-muted-foreground text-sm">Enter a genre and a color to find movies that match your mood.</CardDescription>
+            </CardHeader>
+            <CardContent className="p-4 md:p-6 space-y-4">
+              <div className="flex flex-col sm:flex-row gap-4">
+                <div className="flex-1">
+                  <Label htmlFor="mood-genre-select">Genre:</Label>
+                  <Select onValueChange={handleMoodGenreChange} value={moodGenre}>
+                    <SelectTrigger className="w-full" id="mood-genre-select">
+                      <SelectValue placeholder="Select a Genre" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {uniqueGenres.map(genre => (
+                        <SelectItem key={genre} value={genre}>{genre}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex-1">
+                  <Label htmlFor="mood-color-select">Color:</Label>
+                   <Select onValueChange={setMoodColor} value={moodColor}>
+                    <SelectTrigger className="w-full" id="mood-color-select">
+                      <SelectValue placeholder="Select a Color" />
+                    </SelectTrigger>
+                    <SelectContent>
+                       {moodColors.map(color => (
+                        <SelectItem key={color} value={color}>{color}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+
+              <div className="flex justify-center">
+                <Button onClick={handleMoodSearch} disabled={isLoadingMoodSearch}>
+                  {isLoadingMoodSearch ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : <Search className="mr-2 h-4 w-4" />}
+                  Find Movies
+                </Button>
+              </div>
+              {moodMovies.length > 0 && (
+                <div className="mt-4">
+                  <h3 className="text-lg font-semibold mb-2">Movies matching your mood:</h3>
+                  <ul className="list-disc pl-5 space-y-4"> {/* Added space-y for vertical spacing */}
+                    {moodMovies.map((movie) => ( // Cast to MoviePaletteDataWithColorCount if needed
+                      <li key={movie.id} className="text-muted-foreground">
+                        <span
+                          className="text-primary hover:underline cursor-pointer"
+                          onClick={() => setSelectedMovieId(movie.id)} // Use setSelectedMovieId like in recommendations
+                        >
+                          {movie.name}
+                        </span>
+                        {' '} ({((movie as MoviePaletteDataWithColorCount).colorProportion * 100).toFixed(2)}%) {/* Use as for type assertion if needed */}
+                        {/* Display the palette image */}
+                        <div className="mt-2 w-full flex justify-center">
+                          <Image
+                            src={`/palettes/${movie.id}.png`}
+                            alt={`Color palette for ${movie.name}`}
+                            width={400} // Adjust width as needed
+                            height={30} // Adjust height as needed
+                            className="rounded border border-muted shadow-inner object-contain w-full max-w-xs"
+                          />
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </CardContent>
+          </Card>
           {selectedMovieData ? (
             <>
             {/* Optional: Back Button if you want navigation-like behavior */}
@@ -930,42 +1055,40 @@ export default function CinePaletteExplorer(): ReactElement {
                               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 md:gap-3">
                               {(frameFiles[selectedColor] && frameFiles[selectedColor].length > 0) ? (
                                   [...frameFiles[selectedColor]].sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })).map((file) => {
-
-                                      if(!selectedMovieId || !selectedColor) return null;
-                                      const framePath = `/frames/${selectedMovieId}/${selectedColor}/${file}`;
-                                      const hasError = frameErrors[selectedColor]?.[file] ?? false;
-
-                                      return (
-                                          <div
-                                            key={file}
-                                            className={cn(
-                                                "relative aspect-video w-full bg-muted rounded overflow-hidden shadow-inner border border-border group transition-opacity",
-                                                hasError ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:ring-2 hover:ring-primary hover:ring-offset-2 hover:opacity-90'
-                                            )}
-                                            onClick={() => !hasError && handleFrameClick(file)}
-                                            role="button"
-                                            tabIndex={hasError ? -1 : 0} // Make it focusable only if not error
-                                            aria-label={hasError ? `Frame ${file} failed to load` : `View frame ${file}`}
-                                            onKeyDown={(e) => { if (!hasError && (e.key === 'Enter' || e.key === ' ')) { handleFrameClick(file); }}} // Keyboard accessibility
-                                          >
-                                                {!hasError ? (
-                                                  <Image
-                                                      src={framePath}
-                                                      alt={`Frame ${file} highlighting color ${selectedColor} from ${selectedMovieData.name}`}
-                                                      fill // Use fill for responsive images
-                                                      className="object-cover transition-transform duration-200 group-hover:scale-105" // Subtle hover effect
-                                                      sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, 20vw" // Optimize image loading
-                                                      onError={() => handleFrameImageError(selectedColor, file)}
-                                                      loading="lazy" // Lazy load frame images
-                                                    />
-                                                ) : (
-                                                    <div className="flex flex-col items-center justify-center h-full bg-destructive/10 p-2 text-center">
-                                                      <AlertCircle className="h-6 w-6 text-destructive mb-1" />
-                                                      <span className="text-xs text-destructive">Load Error</span>
-                                                    </div>
-                                                )}
-                                          </div>
-                                      );
+                                    if(!selectedMovieId || !selectedColor) return null;
+                                    const framePath = `/frames/${selectedMovieId}/${selectedColor}/${file}`;
+                                    const hasError = frameErrors[selectedColor]?.[file] ?? false;
+                                    return (
+                                      <div
+                                        key={file}
+                                        className={cn(
+                                            "relative aspect-video w-full bg-muted rounded overflow-hidden shadow-inner border border-border group transition-opacity",
+                                            hasError ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:ring-2 hover:ring-primary hover:ring-offset-2 hover:opacity-90'
+                                        )}
+                                        onClick={() => !hasError && handleFrameClick(file)}
+                                        role="button"
+                                        tabIndex={hasError ? -1 : 0} // Make it focusable only if not error
+                                        aria-label={hasError ? `Frame ${file} failed to load` : `View frame ${file}`}
+                                        onKeyDown={(e) => { if (!hasError && (e.key === 'Enter' || e.key === ' ')) { handleFrameClick(file); }}} // Keyboard accessibility
+                                      >
+                                        {!hasError ? (
+                                          <Image
+                                              src={framePath}
+                                              alt={`Frame ${file} highlighting color ${selectedColor} from ${selectedMovieData.name}`}
+                                              fill // Use fill for responsive images
+                                              className="object-cover transition-transform duration-200 group-hover:scale-105" // Subtle hover effect
+                                              sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, 20vw" // Optimize image loading
+                                              onError={() => handleFrameImageError(selectedColor, file)}
+                                              loading="lazy" // Lazy load frame images
+                                            />
+                                        ) : (
+                                            <div className="flex flex-col items-center justify-center h-full bg-destructive/10 p-2 text-center">
+                                              <AlertCircle className="h-6 w-6 text-destructive mb-1" />
+                                              <span className="text-xs text-destructive">Load Error</span>
+                                            </div>
+                                        )}
+                                      </div>
+                                    );
                                   })
                               ) : (
                                   <div className="col-span-full text-center text-muted-foreground p-6">
@@ -1053,7 +1176,7 @@ export default function CinePaletteExplorer(): ReactElement {
               // Initial state message (not browsing)
             <> <div className="text-center py-4 text-muted-foreground">
                 {/* <ImageIcon className="mx-auto h-12 w-12 mb-4 text-muted-foreground/50" /> */}
-                <p>Enter a movie ID or name above, or browse the list.</p>
+                <p>Or, browse the list.</p>
               </div>
             </>
             ) : null // Render nothing if error exists or browsing (components handle those states)
