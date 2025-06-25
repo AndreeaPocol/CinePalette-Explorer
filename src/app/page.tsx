@@ -740,93 +740,100 @@ export default function CinePaletteExplorer(): ReactElement {
       // setIsLoadingMoodSearch(false); // Already handled in .then and .catch for clarity with console logs
     }
   };
-
-
+  
   return (
     <div className="container mx-auto p-4 md:p-8 min-h-screen flex flex-col items-center relative">
-       <Card className="w-full max-w-4xl shadow-xl mb-8 bg-card text-card-foreground rounded-lg overflow-hidden border border-border">
-        <CardHeader className="bg-muted/40 p-4 border-b border-border">
+      {/* Header Card */}
+       <Card className="w-full max-w-4xl shadow-xl bg-muted/80 mb-8 text-card-foreground rounded-lg overflow-hidden border border-border">
+        <CardHeader className=" p-4 border-b border-border">
           <Link href="/" onClick={handleBackToHomePage} className="block">
             <CardTitle className="text-4xl font-bold text-center text-primary font-jetbrains-mono cursor-pointer">RefinedPalette</CardTitle>
           </Link>
           <p className="text-center text-muted-foreground">Your mood. Your movie.</p>
-           {/* <CardDescription className="text-center text-muted-foreground">Enter a movie's IMDb ID (e.g., tt0111161) or name to explore its visual identity.</CardDescription> */}
         </CardHeader>
         <CardContent className="p-4 md:p-6 space-y-4">
-          {/* Search Input with Suggestion */}
-          <div className="search-box-container w-full relative mt-4"> {/* Made relative */}
-            {/* Input Form - now a flex container */}
-            <form onSubmit={handleMovieSelect} className="relative flex items-center gap-3 w-full" aria-label="Search for movie palette">
-              {/* Span for suggestion, positioned absolutely */}
-              <span
-                className="absolute inset-0 flex items-center pl-3 pointer-events-none text-gray-400 overflow-hidden text-nowrap"
-                style={{ top: 0, left: 0 }} // Explicitly set top and left
-                aria-hidden="true" // Hide from screen readers as it's a visual aid for the input
-              >
-                {/* Display suggestion only if inputValue exists and suggestion is longer */}
-                {inputValue && suggestion && suggestion.toLowerCase().startsWith(inputValue.trim().toLowerCase()) ? (
-                  <span className="opacity-0">{inputValue}</span> // Hidden span to push suggestion
-                ) : null}
-                {inputValue && suggestion ? suggestion.substring(inputValue.length) : ''}
-              </span>
-              <Label htmlFor="movie-id-input" className="sr-only">Movie ID or Name:</Label>
-              {/* Input with transparent background and higher z-index */}
-              <Input
-                type="text"
-                id="movie-id-input" // Added id for label association
-                value={inputValue}
-                onChange={(e) => {
-                  setInputValue(e.target.value); // Keep inputValue as is
-                  // Optionally clear error when user starts typing
-                  if (error) setError(null);
-                }}
-                placeholder="Search by movie ID or name"
-                onKeyDown={(e) => {
-                  if (e.key === 'Tab' && suggestion) {
-                    e.preventDefault();
-                    setInputValue(suggestion);
-                    const movie = allMovies.find(m => m.name.toLowerCase() === suggestion.toLowerCase());
-                    if (movie && suggestion) { // Check if suggestion is not empty
-                      setSelectedMovieId(movie.id);
-                    } else {
-                      // Handle case where suggestion doesn't match a movie (shouldn't happen if suggestion is based on allMovies)
-                      console.error("Suggestion does not match a known movie:", suggestion);
+          {/* Search Section Card */}
+          {moodMovies.length === 0 && (
+            <Card className="w-full shadow-md border border-border rounded-lg ">
+              <CardHeader className="p-4 border-b border-border">
+                <CardTitle className="text-xl font-semibold text-center text-foreground">Search Movie Palettes</CardTitle>
+                <CardDescription className="text-center text-muted-foreground text-sm">Enter a movie's IMDb ID or name to find its visual palette.</CardDescription>
+              </CardHeader>
+              <CardContent className="p-4 md:p-6 space-y-4">
+                <form onSubmit={handleMovieSelect} className="relative flex items-center gap-3 w-full" aria-label="Search for movie palette">
+                  {/* Span for suggestion, positioned absolutely */}
+                  <span
+                    className="absolute inset-0 flex items-center pl-3 pointer-events-none text-gray-400 overflow-hidden text-nowrap"
+                    style={{ top: 0, left: 0 }} // Explicitly set top and left
+                    aria-hidden="true" // Hide from screen readers as it's a visual aid for the input
+                  >
+                    {/* Display suggestion only if inputValue exists and suggestion is longer */}
+                    {inputValue && suggestion && suggestion.toLowerCase().startsWith(inputValue.trim().toLowerCase()) ? (
+                      <span className="opacity-0">{inputValue}</span> // Hidden span to push suggestion
+                    ) : null}
+                    {inputValue && suggestion ? suggestion.substring(inputValue.length) : ''}
+                  </span>
+                  <Label htmlFor="movie-id-input" className="sr-only">Movie ID or Name:</Label>
+                  {/* Input with transparent background and higher z-index */}
+                  <Input
+                    type="text"
+                    id="movie-id-input" // Added id for label association
+                    value={inputValue}
+                    onChange={(e) => {
+                      setInputValue(e.target.value); // Keep inputValue as is
+                      // Optionally clear error when user starts typing
+                      if (error) setError(null);
+                    }}
+                    placeholder="Search"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Tab' && suggestion) {
+                        e.preventDefault();
+                        setInputValue(suggestion);
+                        const movie = allMovies.find(m => m.name.toLowerCase() === suggestion.toLowerCase());
+                        if (movie && suggestion) { // Check if suggestion is not empty
+                          setSelectedMovieId(movie.id);
+                        } else {
+                          // Handle case where suggestion doesn't match a movie (shouldn't happen if suggestion is based on allMovies)
+                          console.error("Suggestion does not match a known movie:", suggestion);
+                        }
+                        setSuggestion(''); // Clear suggestion after accepting
+                      }
+                    }}
+                    onInput={(e) => { // Use onInput for more immediate filtering
+                      const value = (e.target as HTMLInputElement).value.trim().toLowerCase();
+                      const matchingMovie = value ? allMovies.find(m => m.name.toLowerCase().startsWith(value)) : undefined; // Only search if value is not empty
+                      if (matchingMovie && matchingMovie.name.toLowerCase() === value) {
+                        setSuggestion(''); // If input exactly matches a movie name, no suggestion needed
+                      } else
+                        setSuggestion(matchingMovie ? matchingMovie.name : '');
+                        if (error) setError(null); // Clear error on input
                     }
-                    setSuggestion(''); // Clear suggestion after accepting
                   }
-                }}
-                onInput={(e) => { // Use onInput for more immediate filtering
-                  const value = (e.target as HTMLInputElement).value.trim().toLowerCase();
-                  const matchingMovie = value ? allMovies.find(m => m.name.toLowerCase().startsWith(value)) : undefined; // Only search if value is not empty
-                  if (matchingMovie && matchingMovie.name.toLowerCase() === value) {
-                    setSuggestion(''); // If input exactly matches a movie name, no suggestion needed
-                  } else
-                    setSuggestion(matchingMovie ? matchingMovie.name : '');
-                    if (error) setError(null); // Clear error on input
-                }}
-                className="bg-transparent relative z-10 w-full px-3 py-2 pr-10" // Added bg-transparent, relative, z-10
-              />
-              <Button type="submit" aria-label="Load Movie Palette">
-                <Search className="mr-2 h-4 w-4" /> Load Palette
-              </Button>
-            </form>
-          </div>
-          {error && (
-            <Alert variant="destructive" className="mt-4">
-              <AlertCircle className="h-4 w-4" />
-              <AlertTitle>Error</AlertTitle>
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
+                  className="bg-transparent relative z-10 w-full px-3 py-2 pr-10" // Added bg-transparent, relative, z-10
+                />
+                <Button type="submit" aria-label="Load Movie Palette">
+                  <Search className="mr-2 h-4 w-4" /> Load Palette
+                </Button>
+              </form>
+            </CardContent>
+            {/* Initial state message (not browsing) and Browse Button */}
+            {!selectedMovieId && !isBrowsing && (
+              <div className='w-full flex flex-col items-center p-4 pt-0'>
+                <div className="text-center text-muted-foreground">
+                  <p>Or, browse the list.</p>
+                </div>
+                <Button type="button" variant="outline" onClick={handleBrowseClick} aria-label="Browse movies" className="mt-2">Browse</Button>
+              </div>
+            )}
+          </Card>
           )}
           {/* Movie List Dialog */}
-          <MovieListDialog
-            isOpen={isBrowsing} // Control dialog visibility by isBrowsing state
-            onOpenChange={setIsBrowsing} // Update isBrowsing when dialog state changes
-            movies={allMovies} // Pass the sorted allMovies array
-            handleMovieTitleClick={handleMovieTitleClick}
-          />
+          {isBrowsing && moodMovies.length === 0 && ( // Only show dialog when browsing and no mood movies are displayed
+            <MovieListDialog isOpen={isBrowsing} onOpenChange={setIsBrowsing} movies={allMovies} handleMovieTitleClick={handleMovieTitleClick} />
+          )}
+
           {/* Mood Search Section */}
-          <Card className="w-full shadow-md mb-6 bg-muted/40 border border-border rounded-lg">
+          <Card className="w-full shadow-md mb-6 border border-border rounded-lg ">
             <CardHeader className="p-4 border-b border-border">
               <CardTitle className="text-xl font-semibold text-center text-foreground">Find Movies by Mood</CardTitle>
               <CardDescription className="text-center text-muted-foreground text-sm">Enter a genre and a color to find movies that match your mood.</CardDescription>
@@ -871,6 +878,18 @@ export default function CinePaletteExplorer(): ReactElement {
                 </Button>
               </div>
               {moodMovies.length > 0 && (
+                <div className="flex justify-center mt-4">
+                  <Button onClick={() => {
+                    setMoodMovies([]); // Clear mood search results
+                    setMoodGenre(''); // Reset genre
+                    setMoodColor(''); // Reset color
+                    setError(null); // Clear any mood search error
+                  }} variant="outline">
+                    <ArrowLeft className="mr-2 h-4 w-4" /> New Mood Search
+                  </Button>
+                </div>
+              )}
+              {moodMovies.length > 0 && ( // Display results only if there are any
                 <div className="mt-4">
                   <h3 className="text-lg font-semibold mb-2">Movies matching your mood:</h3>
                   <ul className="list-disc pl-5 space-y-4"> {/* Added space-y for vertical spacing */}
@@ -900,6 +919,14 @@ export default function CinePaletteExplorer(): ReactElement {
               )}
             </CardContent>
           </Card>
+
+          {error && (
+            <Alert variant="destructive" className="mt-4">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>Error</AlertTitle>
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
           {selectedMovieData ? (
             <>
             {/* Optional: Back Button if you want navigation-like behavior */}
@@ -981,8 +1008,8 @@ export default function CinePaletteExplorer(): ReactElement {
                 )}
             </div>
               {/* Color Palette Section */}
-               <Card className="mt-6 bg-card border border-border rounded-lg shadow-sm overflow-hidden">
-                <CardHeader className="p-4 border-b border-border bg-muted/40 flex flex-row items-center justify-between"> {/* Added flex properties */}
+               <Card className="mt-6  border border-border rounded-lg shadow-sm overflow-hidden">
+                <CardHeader className="p-4 border-b border-border  flex flex-row items-center justify-between"> {/* Added flex properties */}
                   <div> {/* Wrap title and description */}
                     <CardTitle className="text-xl font-semibold text-foreground">
                       {selectedColor ? `Frames for ${selectedColor.charAt(0).toUpperCase() + selectedColor.slice(1)}` : "Movie Frames by Color"}
@@ -1027,8 +1054,8 @@ export default function CinePaletteExplorer(): ReactElement {
                     </div>
                   )}
                   {/* Frames by Color Section */}
-                  <Card className="mt-6 bg-card border border-border rounded-lg shadow-sm overflow-hidden">
-                    <CardHeader className="p-4 border-b border-border bg-muted/40">
+                  <Card className="mt-6  border border-border rounded-lg shadow-sm overflow-hidden">
+                    <CardHeader className="p-4 border-b border-border ">
                       <CardTitle className="text-xl font-semibold text-center text-foreground">
                         {selectedColor ? `Frames for ${selectedColor.charAt(0).toUpperCase() + selectedColor.slice(1)}` : 'Movie Frames by Color'}
                       </CardTitle>
@@ -1121,7 +1148,7 @@ export default function CinePaletteExplorer(): ReactElement {
                         <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
                           {topRecommendations.map((recommendation, index) => (
                             <Card key={recommendation.movie.id} className="bg-card border border-border rounded-lg shadow-sm overflow-hidden">
-                              <CardContent className="p-3 flex flex-col items-center text-center">
+                              <CardContent className="p-3 flex flex-col items-center text-center ">
                               <div className="text-4xl font-bold text-primary mb-2">{index + 1}</div> {/* Big number */}
                                 {recommendation.movie.youtubeKey && (
                                     <div className="relative w-full aspect-video mb-2 rounded overflow-hidden border border-muted">
@@ -1172,23 +1199,8 @@ export default function CinePaletteExplorer(): ReactElement {
                 </CardContent>
               </Card>
             </>
-            ) : !error && !selectedMovieId && !isBrowsing ? (
-              // Initial state message (not browsing)
-            <> <div className="text-center py-4 text-muted-foreground">
-                {/* <ImageIcon className="mx-auto h-12 w-12 mb-4 text-muted-foreground/50" /> */}
-                <p>Or, browse the list.</p>
-              </div>
-            </>
-            ) : null // Render nothing if error exists or browsing (components handle those states)
+          ) : null // Render nothing if error exists or browsing (components handle those states)
           }
-          {!error && !selectedMovieId && !isBrowsing && (
-              <div className='w-full flex flex-col items-center'>
-                {/* Browse Button */}
-                <Button type="button" variant="outline" onClick={handleBrowseClick} aria-label="Browse movies" className="mt-2">
-                  Browse
-                </Button>
-              </div>
-          )}
           {/* Back to Top button */}
           {showBackToTop && (
             <TooltipProvider>
