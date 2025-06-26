@@ -872,8 +872,6 @@ export default function CinePaletteExplorer(): ReactElement {
                     </Select>
                   </div>
                 </div>
-
-
                 <div className="flex justify-center">
                   <Button onClick={handleMoodSearch} disabled={isLoadingMoodSearch}>
                     {isLoadingMoodSearch ? (
@@ -885,29 +883,29 @@ export default function CinePaletteExplorer(): ReactElement {
                 {moodMovies.length > 0 && ( // Display results only if there are any
                   <div className="mt-4">
                     <h3 className="text-lg font-semibold mb-2">Movies matching your mood:</h3>
-                    <ul className="list-disc pl-5 space-y-4"> {/* Added space-y for vertical spacing */}
-                      {moodMovies.map((movie) => ( // Cast to MoviePaletteDataWithColorCount if needed
-                        <li key={movie.id} className="text-muted-foreground">
-                          <span
-                            className="text-primary hover:underline cursor-pointer"
-                            onClick={() => setSelectedMovieId(movie.id)} // Use setSelectedMovieId like in recommendations
-                          >
-                            {movie.name}
-                          </span>
-                          {' '} ({((movie as MoviePaletteDataWithColorCount).colorProportion * 100).toFixed(2)}%) {/* Use as for type assertion if needed */}
-                          {/* Display the palette image */}
-                          <div className="mt-2 w-full flex justify-center">
-                            <Image
-                              src={`/palettes/${movie.id}.png`}
-                              alt={`Color palette for ${movie.name}`}
-                              width={400} // Adjust width as needed
-                              height={30} // Adjust height as needed
-                              className="rounded border border-muted shadow-inner object-contain w-full max-w-xs"
-                            />
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
+                      <ol className="list-decimal pl-5 space-y-4">
+                        {moodMovies.map((movie) => ( // Cast to MoviePaletteDataWithColorCount if needed
+                          <li key={movie.id} className="text-muted-foreground">
+                            <span
+                              className="text-primary hover:underline cursor-pointer"
+                              onClick={() => setSelectedMovieId(movie.id)} // Use setSelectedMovieId like in recommendations
+                            >
+                              {movie.name}
+                            </span>
+                            {' '} ({((movie as MoviePaletteDataWithColorCount).colorProportion * 100).toFixed(2)}%) {/* Use as for type assertion if needed */}
+                            {/* Display the palette image */}
+                            <div className="mt-2 w-full flex justify-center">
+                              <Image
+                                src={`/palettes/${movie.id}.png`}
+                                alt={`Color palette for ${movie.name}`}
+                                width={400} // Adjust width as needed
+                                height={30} // Adjust height as needed
+                                className="rounded border border-muted shadow-inner object-contain w-full max-w-xs"
+                              />
+                            </div>
+                          </li>
+                        ))}
+                      </ol>
                   </div>
                 )}
               </CardContent>
