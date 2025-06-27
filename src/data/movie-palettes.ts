@@ -72,6 +72,36 @@ export const moviePalettes: MoviePaletteData[] = [
     name: "Avengers: Age of Ultron",
     youtubeKey: "MZoO8QVMxkk",
     genres: ["Action", "Adventure", "Sci-Fi"],
+  },
+  {
+    id: "tt12934940",
+    name: "On the Line",
+    youtubeKey: "Ivl_vizw1TA",
+    genres: ["Thriller"]
+  },
+  {
+    id: "tt14775748",
+    name: "Rehana",
+    youtubeKey: "WZNCRsVhvx8",
+    genres: ["Drama"]
+  },
+  {
+    id: "tt2147374",
+    name: "Fogo",
+    youtubeKey: "7UsMhBpBg2o",
+    genres: ["Drama"]
+  },
+  {
+    id: "tt2536366",
+    name: "Sitting Next to Zoe",
+    youtubeKey: "qWqu5uwXq8s",
+    genres: ["Comedy", "Drama", "Family"]
+  },
+  {
+    id: "tt3922754",
+    name: "Ardennes Fury",
+    youtubeKey: "R1fX9zjuaR8",
+    genres: ["Action", "War"]
   }
 ];
 
