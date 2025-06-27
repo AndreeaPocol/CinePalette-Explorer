@@ -47,16 +47,17 @@ const isWithinRange = (hsvVal: { h: number; s: number; v: number }, rangeGroup: 
   }
 };
 
-export async function findMoviesByMood(genre: string, color: string): Promise<MoviePaletteDataWithColorCount[]> {
-  console.log(`findMoviesByMood called with genre: ${genre}, color: ${color}`);
-  // Filter by genre
-  const moviesByGenre = moviePalettes.filter(movie =>
-    movie.genres.map(g => g.toLowerCase()).includes(genre.toLowerCase())
-  );
-  console.log('Movies after genre filter:', moviesByGenre);
+export async function findMoviesByMood(color: string): Promise<Record<string, MoviePaletteDataWithColorCount[]>> {
+  console.log(`findMoviesByMood called with color: ${color}`);
+
+  const resultsByGenre: Record<string, MoviePaletteDataWithColorCount[]> = {};
+
+  // Get all unique genres
+  const allGenres = Array.from(new Set(moviePalettes.flatMap(movie => movie.genres)));
+  console.log('All genres:', allGenres);
 
   // Use Promise.all with .map to fetch and process palettes concurrently
-  const moviesWithColorPromises = moviesByGenre.map(async (movie) => {
+  const moviesWithColorPromises = moviePalettes.map(async (movie) => {
     try {
       // Fetch the palette image (PNG)
       const paletteUrl = `/palettes/${movie.id}.png`;
@@ -107,15 +108,27 @@ export async function findMoviesByMood(genre: string, color: string): Promise<Mo
   // Wait for all promises to resolve
   const moviesWithColorResults = await Promise.all(moviesWithColorPromises);
 
-  // Filter out movies where fetching/processing failed and those with colorCount 0
+  // Filter out movies where fetching/processing failed
   const filteredMoviesWithColor = moviesWithColorResults
     .filter((movie): movie is MoviePaletteDataWithColorCount => movie !== null) // Remove null entries from failed fetches/processing and assert type
-    .filter(movie => (movie as MoviePaletteDataWithColorCount).colorCount > 0); // Ensure colorCount > 0
-  // Sort by color count (or could use proportion if preferred for sorting) in descending order
-  filteredMoviesWithColor.sort((a, b) => b.colorCount - a.colorCount);
 
-  console.log("findMoviesByMood returning filtered movies.");
-  return filteredMoviesWithColor;
+  // Group movies by genre
+  for (const genre of allGenres) {
+    const moviesForGenre = filteredMoviesWithColor
+      .filter(movie => movie.genres.map(g => g.toLowerCase()).includes(genre.toLowerCase()))
+      .filter(movie => movie.colorCount > 0); // Ensure colorCount > 0 for movies in this genre
+
+    // Sort movies within each genre by color count in descending order
+    moviesForGenre.sort((a, b) => b.colorCount - a.colorCount);
+
+    // Only add the genre if there are movies that match the color
+    if (moviesForGenre.length > 0) {
+      resultsByGenre[genre] = moviesForGenre;
+    }
+  }
+
+  console.log("findMoviesByMood returning results by genre.");
+  return resultsByGenre;
 }
 
 /**

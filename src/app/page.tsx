@@ -24,7 +24,8 @@ import type { TrailerFileApiOutput } from '@/app/api/trailer-file/route';
 import Link from "next/link";
 import { findMoviesByMood } from '@/movie-mood-finder';
 import { MovieListDialog } from "@/components/movie-list-dialog";
-import RecommendationExplanationPanel from "@/components/recommendation-explanation-panel";import type { MoviePaletteDataWithColorCount } from '@/movie-mood-finder';
+import RecommendationExplanationPanel from "@/components/recommendation-explanation-panel";
+import type { MoviePaletteDataWithColorCount } from '@/movie-mood-finder';
 
 
 type MoviePaletteDataWithId = MoviePaletteData & { id: string };
@@ -62,9 +63,8 @@ export default function CinePaletteExplorer(): ReactElement {
   const [recommendationError, setRecommendationError] = useState<string | null>(null);
   const [micdValue, setMicdValue] = useState<number | null>(null);
 
-  const [moodGenre, setMoodGenre] = useState<string>('');
   const [moodColor, setMoodColor] = useState<string>('');
-  const [moodMovies, setMoodMovies] = useState<MoviePaletteDataWithColorCount[]>([]);
+  const [moodMovies, setMoodMovies] = useState<Record<string, MoviePaletteDataWithColorCount[]>>({});
   const [isLoadingMoodSearch, setIsLoadingMoodSearch] = useState<boolean>(false);
   const [implementation, setImplementation] = useState<'hungarian' | 'micd'>('micd'); // State for implementation method
 
@@ -681,9 +681,8 @@ export default function CinePaletteExplorer(): ReactElement {
     setIsMovieSelected(false);
     setSelectedColor(null);
     setPaletteImageError(false);
-    setMoodGenre('');
     setMoodColor('');
-    setMoodMovies([]);
+    setMoodMovies({});
     setIsLoadingMoodSearch(false);
   }
 
@@ -702,12 +701,8 @@ export default function CinePaletteExplorer(): ReactElement {
   // Extract unique genres from allMovies
   const uniqueGenres = Array.from(new Set(allMovies.flatMap(movie => movie.genres || []))).sort();
 
-  // Predefined list of colors
-  const moodColors = ['Red', 'Orange', 'Yellow', 'Green', 'Cyan', 'Blue', 'Purple', 'Pink'];
-
-  const handleMoodGenreChange = (value: string) => {
-    setMoodGenre(value);
-  };
+  // Predefined list of colors for mood search
+  const moodColors = ['Red', 'Orange', 'Yellow', 'Green', 'Cyan', 'Blue', 'Purple', 'Pink', 'All'];
 
   const scrollToTop = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -716,17 +711,16 @@ export default function CinePaletteExplorer(): ReactElement {
   // Function to handle mood search
   const handleMoodSearch = async () => {
     console.log("handleMoodSearch triggered");
-    console.log('Mood Genre:', moodGenre, 'Mood Color:', moodColor);
-    if (!moodGenre || !moodColor) {
-      setError("Please enter both a genre and a color for the mood search.");
-      setMoodMovies([]);
-      return;
+    console.log('Mood Color:', moodColor);
+    if (!moodColor || moodColor === 'All') {
+      setError("Please select a color for the mood search.");
+      setMoodMovies({});
     }
     setIsLoadingMoodSearch(true);
     try {
-      const result = findMoviesByMood(moodGenre, moodColor);
+      const result = findMoviesByMood(moodColor);
       // Await the promise returned by findMoviesByMood and then log and set the state
-      result.then((moodMoviesResult) => {
+      result.then((moodMoviesResult: Record<string, MoviePaletteDataWithColorCount[]>) => {
       console.log('findMoviesByMood result (Promise):', result);
       console.log('Resolved mood movies result:', moodMoviesResult);
       setMoodMovies(moodMoviesResult);
@@ -738,16 +732,27 @@ export default function CinePaletteExplorer(): ReactElement {
       console.error("Error during mood search:", err);
       setError(`An error occurred during the mood search: ${err.message || 'Unknown error'}`);
       setIsLoadingMoodSearch(false);
-      setMoodMovies([]);
+      setMoodMovies({});
     } finally {
       // This block will execute regardless of success or error
       // setIsLoadingMoodSearch(false); // Already handled in .then and .catch for clarity with console logs
+      setMoodMovies({}); // Clear previous mood results
     }
   };
   
+  // Function to get the top 3 movies from the mood search results
+  const getTopMoodMovies = (moodMovies: Record<string, MoviePaletteDataWithColorCount[]>) => {
+    const allMoodMovies = Object.values(moodMovies).flat();
+    return allMoodMovies
+      .sort((a, b) => b.colorProportion - a.colorProportion) // Sort by colorProportion descending
+      .slice(0, 3); // Take the top 3
+  };
+
+  const topMoodMovies = getTopMoodMovies(moodMovies);
+
   return (
     <div className="container mx-auto p-4 md:p-8 min-h-screen flex flex-col items-center relative">
-      {/* Header Card */}
+    {/* Header Card */}
        <Card className="w-full max-w-4xl shadow-xl bg-muted/80 mb-8 text-card-foreground rounded-lg overflow-hidden border border-border">
         <CardHeader className=" p-4 border-b border-border">
           <Link href="/" onClick={handleBackToHomePage} className="block">
@@ -757,7 +762,7 @@ export default function CinePaletteExplorer(): ReactElement {
         </CardHeader>
         <CardContent className="p-4 md:p-6 space-y-4">
           {/* Search Section Card */}
-          {moodMovies.length === 0 && isLoadingMoodSearch === false && (
+          {Object.keys(moodMovies).length === 0 && isLoadingMoodSearch === false && (
             <Card className="w-full shadow-md border border-border rounded-lg ">
               <CardHeader className="p-4 border-b border-border">
                 <CardTitle className="text-xl font-semibold text-center text-foreground">Search Movie Palettes</CardTitle>
@@ -832,32 +837,25 @@ export default function CinePaletteExplorer(): ReactElement {
             </Card>
           )}
           {/* Movie List Dialog */}
-          {isBrowsing && moodMovies.length === 0 && ( // Only show dialog when browsing and no mood movies are displayed
+          {isBrowsing && Object.keys(moodMovies).length === 0 && ( // Only show dialog when browsing and no mood movies are displayed
             <MovieListDialog isOpen={isBrowsing} onOpenChange={setIsBrowsing} movies={allMovies} handleMovieTitleClick={handleMovieTitleClick} />
           )}
 
           {/* Mood Search Section */}
-          {!isBrowsing && !selectedMovieId && isLoadingMoodSearch === false && ( // Hide when browsing or movie is selected
+          {!isBrowsing && !selectedMovieId && ( // Hide when browsing or movie is selected
+            isLoadingMoodSearch ? (
+              <div className="flex justify-center items-center p-10">
+                <Loader2 className="h-12 w-12 animate-spin text-primary" />
+                <span className="ml-4 text-xl text-muted-foreground">Finding movies for your mood...</span>
+              </div>
+            ) : (
             <Card className="w-full shadow-md mb-6 border border-border rounded-lg ">
               <CardHeader className="p-4 border-b border-border">
                 <CardTitle className="text-xl font-semibold text-center text-foreground">Find Movies by Mood</CardTitle>
                 <CardDescription className="text-center text-muted-foreground text-sm">Enter a genre and a color to find movies that match your mood.</CardDescription>
               </CardHeader>
               <CardContent className="p-4 md:p-6 space-y-4">
-                <div className="flex flex-col sm:flex-row gap-4">
-                  <div className="flex-1">
-                    <Label htmlFor="mood-genre-select">Genre:</Label>
-                    <Select onValueChange={handleMoodGenreChange} value={moodGenre}>
-                      <SelectTrigger className="w-full" id="mood-genre-select">
-                        <SelectValue placeholder="Select a Genre" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {uniqueGenres.map(genre => (
-                          <SelectItem key={genre} value={genre}>{genre}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                <div className="flex flex-col gap-4">
                   <div className="flex-1">
                     <Label htmlFor="mood-color-select">Color:</Label>
                     <Select onValueChange={setMoodColor} value={moodColor}>
@@ -873,44 +871,83 @@ export default function CinePaletteExplorer(): ReactElement {
                   </div>
                 </div>
                 <div className="flex justify-center">
-                  <Button onClick={handleMoodSearch} disabled={isLoadingMoodSearch}>
-                    {isLoadingMoodSearch ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : <Search className="mr-2 h-4 w-4" />}
+                  <Button onClick={handleMoodSearch}>
                     Find Movies
                   </Button>
                 </div>
-                {moodMovies.length > 0 && ( // Display results only if there are any
-                  <div className="mt-4">
-                    <h3 className="text-lg font-semibold mb-2">Movies matching your mood:</h3>
-                      <ol className="list-decimal pl-5 space-y-4">
-                        {moodMovies.map((movie) => ( // Cast to MoviePaletteDataWithColorCount if needed
-                          <li key={movie.id} className="text-muted-foreground">
-                            <span
-                              className="text-primary hover:underline cursor-pointer"
-                              onClick={() => setSelectedMovieId(movie.id)} // Use setSelectedMovieId like in recommendations
-                            >
-                              {movie.name}
-                            </span>
-                            {' '} ({((movie as MoviePaletteDataWithColorCount).colorProportion * 100).toFixed(2)}%) {/* Use as for type assertion if needed */}
-                            {/* Display the palette image */}
-                            <div className="mt-2 w-full flex justify-center">
+                {Object.keys(moodMovies).length > 0 && topMoodMovies.length > 0 && (
+                  <div className="mt-8">
+                    <h3 className="text-xl font-semibold mb-4 text-foreground">Top 3 matches for {moodColor} across all genres</h3>
+                    <ol className="list-decimal list-inside space-y-3">
+                      {topMoodMovies.map((movie, index) => (
+                        <li key={movie.id} className="flex items-start">
+                          <span className="mr-2 text-lg font-bold text-primary">{index + 1}.</span>
+                          <Card
+                            className="flex-grow bg-card border border-border rounded-lg shadow-sm overflow-hidden cursor-pointer hover:ring-2 hover:ring-primary transition-all duration-200 flex items-center p-3"
+                            onClick={() => setSelectedMovieId(movie.id)}
+                          >
+                            <div className="flex flex-grow items-center">
+                              <span className="text-base font-semibold text-primary hover:underline mr-3">
+                                {movie.name}
+                              </span>
+                              <p className="text-sm text-muted-foreground">{((movie as MoviePaletteDataWithColorCount).colorProportion * 100).toFixed(2)}% match</p>
+                            </div>
+                             {/* Display the palette image */}
                               <Image
                                 src={`/palettes/${movie.id}.png`}
                                 alt={`Color palette for ${movie.name}`}
-                                width={400} // Adjust width as needed
-                                height={30} // Adjust height as needed
-                                className="rounded border border-muted shadow-inner object-contain w-full max-w-xs"
+                                width={100} // Adjust width as needed
+                                height={15} // Adjust height as needed
+                                className="rounded border border-muted shadow-inner object-contain flex-shrink-0 ml-auto"
                               />
-                            </div>
-                          </li>
-                        ))}
-                      </ol>
+                          </Card>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                )}
+                {Object.keys(moodMovies).length > 0 && (
+                  <div className="mt-8">
+                  {Object.entries(moodMovies).map(([genre, movies]: [string, MoviePaletteDataWithColorCount[]]) => (
+                    movies.length > 0 && (
+                      <div key={genre} className="mb-6">
+                        <h3 className="text-xl font-semibold mb-3 text-foreground">{genre}</h3>
+                        <div className="flex flex-nowrap gap-4 overflow-x-auto pb-4">
+                          {movies.map(movie => (
+                            <Card
+                              key={movie.id}
+                              // flex-shrink-0 prevents cards from shrinking below their content size
+                              // w-64 gives each card a fixed width, forcing overflow
+                              className="flex-shrink-0 w-64 bg-card border border-border rounded-lg shadow-sm overflow-hidden cursor-pointer hover:ring-2 hover:ring-primary transition-all duration-200"
+                              onClick={() => setSelectedMovieId(movie.id)}
+                              >
+                              <CardContent className="p-3 flex flex-col items-center text-center">
+                                <span className="text-base font-semibold text-primary hover:underline">
+                                  {movie.name}
+                                </span>
+                                <p className="text-sm text-muted-foreground mb-2">{((movie as MoviePaletteDataWithColorCount).colorProportion * 100).toFixed(2)}% match</p> {/* Display proportion */}
+                                {/* Display the palette image */}
+                                <div className="w-full flex justify-center">
+                                  <Image
+                                    src={`/palettes/${movie.id}.png`}
+                                    alt={`Color palette for ${movie.name}`}
+                                    width={200} // Adjust width as needed
+                                    height={20} // Adjust height as needed
+                                    className="rounded border border-muted shadow-inner object-contain w-full max-w-[200px]"
+                                  />
+                                </div>
+                              </CardContent>
+                            </Card>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  ))}
                   </div>
                 )}
               </CardContent>
             </Card>
-          )}
+          ))}
 
           {error && (
             <Alert variant="destructive" className="mt-4">
