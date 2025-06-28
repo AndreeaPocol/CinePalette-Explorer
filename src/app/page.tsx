@@ -742,7 +742,14 @@ export default function CinePaletteExplorer(): ReactElement {
   
   // Function to get the top 3 movies from the mood search results
   const getTopMoodMovies = (moodMovies: Record<string, MoviePaletteDataWithColorCount[]>) => {
-    const allMoodMovies = Object.values(moodMovies).flat();
+    // Collect all movies from all genre lists
+    const allMoodMoviesRaw = Object.values(moodMovies).flat();
+    // Filter out duplicates based on movie ID
+    const uniqueMoviesMap = new Map<string, MoviePaletteDataWithColorCount>();
+    allMoodMoviesRaw.forEach(movie => {
+        uniqueMoviesMap.set(movie.id, movie);
+    });
+    const allMoodMovies = Array.from(uniqueMoviesMap.values());
     return allMoodMovies
       .sort((a, b) => b.colorProportion - a.colorProportion) // Sort by colorProportion descending
       .slice(0, 3); // Take the top 3
