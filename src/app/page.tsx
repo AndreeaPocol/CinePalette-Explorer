@@ -702,7 +702,7 @@ export default function CinePaletteExplorer(): ReactElement {
   const uniqueGenres = Array.from(new Set(allMovies.flatMap(movie => movie.genres || []))).sort();
 
   // Predefined list of colors for mood search
-  const moodColors = ['Red', 'Orange', 'Yellow', 'Green', 'Cyan', 'Blue', 'Purple', 'Pink', 'All'];
+  const moodColors = ['Red', 'Orange', 'Yellow', 'Green', 'Cyan', 'Blue', 'Purple', 'Pink'];
 
   const scrollToTop = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -928,6 +928,19 @@ export default function CinePaletteExplorer(): ReactElement {
                               className="flex-shrink-0 w-64 bg-card border border-border rounded-lg shadow-sm overflow-hidden cursor-pointer hover:ring-2 hover:ring-primary transition-all duration-200"
                               onClick={() => setSelectedMovieId(movie.id)}
                               >
+                              {/* iframe for YouTube trailer preview thumbnail */}
+                              {movie.youtubeKey && (
+                                <div className="relative w-full aspect-video rounded-t-lg overflow-hidden border-b border-border">
+                                  <iframe
+                                    src={`https://www.youtube.com/embed/${movie.youtubeKey}`}
+                                    className="object-cover"
+                                    width="100%"
+                                    height="100%"
+                                    allow="accelerometer; clipboard-write; encrypted-media; gyroscope; web-share"
+                                    allowFullScreen
+                                  />
+                                </div>
+                              )}
                               <CardContent className="p-3 flex flex-col items-center text-center">
                                 <span className="text-base font-semibold text-primary hover:underline">
                                   {movie.name}

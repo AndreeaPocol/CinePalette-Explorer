@@ -171,9 +171,9 @@ async function processImageForColors(imageBitmap: ImageBitmap): Promise<ColorEnt
     const b = pixels[i + 2];
     const toHex = (c: number) => c.toString(16).padStart(2, '0');
     const colorHex = `#${toHex(r)}${toHex(g)}${toHex(b)}`;
-    if (colorHex === '#000000') {
-      console.warn("Clicked on black/error area or failed to get color.");
-    }
+    // if (colorHex === '#000000') {
+    //   console.warn("Clicked on black/error area or failed to get color.");
+    // }
 
     const hsv = hexToHsv(colorHex);
 
