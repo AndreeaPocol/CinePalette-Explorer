@@ -925,19 +925,17 @@ export default function CinePaletteExplorer(): ReactElement {
                               key={movie.id}
                               // flex-shrink-0 prevents cards from shrinking below their content size
                               // w-64 gives each card a fixed width, forcing overflow
-                              className="flex-shrink-0 w-64 bg-card border border-border rounded-lg shadow-sm overflow-hidden cursor-pointer hover:ring-2 hover:ring-primary transition-all duration-200"
+                              className="flex-shrink-0 w-64 bg-card border border-border rounded-lg shadow-sm overflow-hidden cursor-pointer hover:ring-2 hover:ring-primary transition-all duration-200 h-auto flex flex-col"
+                              style={{ height: 'auto' }} // Ensure card height adjusts to content
                               onClick={() => setSelectedMovieId(movie.id)}
                               >
-                              {/* iframe for YouTube trailer preview thumbnail */}
-                              {movie.youtubeKey && (
-                                <div className="relative w-full aspect-video rounded-t-lg overflow-hidden border-b border-border">
-                                  <iframe
-                                    src={`https://www.youtube.com/embed/${movie.youtubeKey}`}
+                              {movie.posterUrl && (
+                                <div className="relative w-full rounded-t-lg overflow-hidden border-b border-border" style={{ paddingBottom: '150%' }}> {/* Use padding-bottom to maintain aspect ratio, adjust value as needed */}
+                                  <Image
+                                    src={movie.posterUrl || ''} // Ensure src is not null
+                                    alt={`${movie.name} poster`}
+                                    fill
                                     className="object-cover"
-                                    width="100%"
-                                    height="100%"
-                                    allow="accelerometer; clipboard-write; encrypted-media; gyroscope; web-share"
-                                    allowFullScreen
                                   />
                                 </div>
                               )}
@@ -1039,7 +1037,26 @@ export default function CinePaletteExplorer(): ReactElement {
             </Dialog>
 
             {/* YouTube Video Section */}
-            <div className="w-full aspect-video rounded-lg overflow-hidden shadow-md bg-muted border border-border">
+            <div className="flex flex-col md:flex-row gap-6 w-full">
+              {/* Movie Poster Section */}
+              {selectedMovieData.posterUrl && (
+                <div className="flex-shrink-0 w-full md:w-1/3 lg:w-1/4 aspect-[2/3] rounded-lg overflow-hidden shadow-md border border-border">
+                  <Image
+                    src={selectedMovieData.posterUrl}
+                    alt={`${selectedMovieData.name} Poster`}
+                    width={300} // Adjust width as needed
+                    height={450} // Maintain aspect ratio
+                    className="object-cover w-full h-full"
+                    priority // Prioritize loading the poster
+                    onError={(e) => {
+                      console.error('Error loading poster image:', selectedMovieData.posterUrl, e);
+                      // Optionally hide the image or show a placeholder on error
+                      (e.target as HTMLImageElement).style.display = 'none';
+                    }}
+                  />
+                </div>
+              )}
+              <div className="flex-grow w-full aspect-video rounded-lg overflow-hidden shadow-md bg-muted border border-border">
                 {selectedMovieData.youtubeKey ? (
                     <iframe
                       width="100%"
@@ -1055,6 +1072,7 @@ export default function CinePaletteExplorer(): ReactElement {
                     <p className="text-center">Youtube trailer not found for this movie</p>
                   </div>
                 )}
+              </div>
             </div>
               {/* Color Palette Section */}
                <Card className="mt-6  border border-border rounded-lg shadow-sm overflow-hidden">
