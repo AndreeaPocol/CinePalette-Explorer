@@ -884,7 +884,7 @@ export default function CinePaletteExplorer(): ReactElement {
                 </div>
                 {Object.keys(moodMovies).length > 0 && topMoodMovies.length > 0 && (
                   <div className="mt-8">
-                    <h3 className="text-xl font-semibold mb-4 text-foreground">Top 3 matches for {moodColor} across all genres</h3>
+                    <h3 className="text-xl font-semibold mb-4 text-foreground">Top matches for {moodColor} across all genres</h3>
                     <ol className="list-decimal list-inside space-y-3">
                       {topMoodMovies.map((movie, index) => (
                         <li key={movie.id} className="flex items-start">
@@ -915,7 +915,8 @@ export default function CinePaletteExplorer(): ReactElement {
                 )}
                 {Object.keys(moodMovies).length > 0 && (
                   <div className="mt-8">
-                  {Object.entries(moodMovies).map(([genre, movies]: [string, MoviePaletteDataWithColorCount[]]) => (
+                  {Object.entries(moodMovies)
+                  .sort(([genreA], [genreB]) => genreA.localeCompare(genreB)).map(([genre, movies]: [string, MoviePaletteDataWithColorCount[]]) => (
                     movies.length > 0 && (
                       <div key={genre} className="mb-6">
                         <h3 className="text-xl font-semibold mb-3 text-foreground">{genre}</h3>

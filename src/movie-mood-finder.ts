@@ -130,11 +130,35 @@ export async function findMoviesByMood(color: string): Promise<Record<string, Mo
       delete resultsByGenre[genre];
     }
   }
+  
+  // Consolidate genre groups if they have identical movie lists
+  const consolidatedResults: Record<string, MoviePaletteDataWithColorCount[]> = {};
+  const genreKeys = Object.keys(resultsByGenre);
+  const processedIndices: Set<number> = new Set();
 
-  console.log("findMoviesByMood returning results by genre.");
-  return resultsByGenre;
+  for (let i = 0; i < genreKeys.length; i++) {
+    if (processedIndices.has(i)) continue;
+
+    const currentGenre = genreKeys[i];
+    const currentMovieList = resultsByGenre[currentGenre];
+    const similarGenres = [currentGenre];
+
+    for (let j = i + 1; j < genreKeys.length; j++) {
+      if (processedIndices.has(j)) continue;
+      const nextGenre = genreKeys[j];
+      const nextMovieList = resultsByGenre[nextGenre];
+      if (JSON.stringify(currentMovieList.map(m => m.id)) === JSON.stringify(nextMovieList.map(m => m.id))) {
+        similarGenres.push(nextGenre);
+        processedIndices.add(j);
+      }
+    }
+    const newGenreName = similarGenres.sort().join(', ');
+    consolidatedResults[newGenreName] = currentMovieList;
+    processedIndices.add(i);
+  }
+
+  return consolidatedResults;
 }
-
 /**
  * Processes an image to extract dominant colors and their counts using color quantization.
  * @param imageBitmap - The ImageBitmap to process.
