@@ -721,10 +721,10 @@ export default function CinePaletteExplorer(): ReactElement {
       const result = findMoviesByMood(moodColor);
       // Await the promise returned by findMoviesByMood and then log and set the state
       result.then((moodMoviesResult: Record<string, MoviePaletteDataWithColorCount[]>) => {
-      console.log('findMoviesByMood result (Promise):', result);
-      console.log('Resolved mood movies result:', moodMoviesResult);
+      // console.log('findMoviesByMood result (Promise):', result);
+      // console.log('Resolved mood movies result:', moodMoviesResult);
       setMoodMovies(moodMoviesResult);
-      console.log('Mood movies set:', moodMoviesResult);
+      // console.log('Mood movies set:', moodMoviesResult);
       setIsLoadingMoodSearch(false);
       setError(null);
       });
@@ -937,6 +937,7 @@ export default function CinePaletteExplorer(): ReactElement {
                                     alt={`${movie.name} poster`}
                                     fill
                                     className="object-cover"
+                                    sizes="(max-width: 640px) 100vw, (max-width: 768px) 50vw, (max-width: 1024px) 33vw, 200px" // Adjust sizes based on card width and grid layout
                                   />
                                 </div>
                               )}

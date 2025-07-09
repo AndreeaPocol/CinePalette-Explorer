@@ -48,20 +48,20 @@ const isWithinRange = (hsvVal: { h: number; s: number; v: number }, rangeGroup: 
 };
 
 export async function findMoviesByMood(color: string): Promise<Record<string, MoviePaletteDataWithColorCount[]>> {
-  console.log(`findMoviesByMood called with color: ${color}`);
+  // console.log(`findMoviesByMood called with color: ${color}`);
 
   const resultsByGenre: Record<string, MoviePaletteDataWithColorCount[]> = {};
 
   // Get all unique genres
   const allGenres = Array.from(new Set(moviePalettes.flatMap(movie => movie.genres)));
-  console.log('All genres:', allGenres);
+  // console.log('All genres:', allGenres);
 
   // Use Promise.all with .map to fetch and process palettes concurrently
   const moviesWithColorPromises = moviePalettes.map(async (movie) => {
     try {
       // Fetch the palette image (PNG)
       const paletteUrl = `/palettes/${movie.id}.png`;
-      console.log(`Attempting to fetch palette image for movie ${movie.id} from ${paletteUrl}`);
+      // console.log(`Attempting to fetch palette image for movie ${movie.id} from ${paletteUrl}`);
       const response = await fetch(paletteUrl);
       if (!response.ok) {
         console.warn(
@@ -70,13 +70,13 @@ export async function findMoviesByMood(color: string): Promise<Record<string, Mo
         return null; // Return null for movies where palette data can't be fetched
       }
       const blob = await response.blob(); // Read the response body ONCE
-      console.log(`Successfully fetched palette image for movie ${movie.id}`);
+      // console.log(`Successfully fetched palette image for movie ${movie.id}`);
       try {
       const imageBitmap = await createImageBitmap(blob); // Use the blob for createImageBitmap
-      console.log(`[${movie.id}] ImageBitmap dimensions: ${imageBitmap.width}x${imageBitmap.height}`);
+      // console.log(`[${movie.id}] ImageBitmap dimensions: ${imageBitmap.width}x${imageBitmap.height}`);
       const paletteData: ColorEntry[] = await processImageForColors(imageBitmap); // Use the ImageBitmap for processing
-      console.log(`[${movie.id}] Processed palette data:`, paletteData);
-      console.log(`Successfully identified colors for movie ${movie.id}`);
+      // console.log(`[${movie.id}] Processed palette data:`, paletteData);
+      // console.log(`Successfully identified colors for movie ${movie.id}`);
       const colorEntry: ColorEntry | undefined = paletteData.find(
         // Find the color entry that matches the selected mood color name
         (entry) => entry.color.toLowerCase() === color.toLowerCase()
@@ -87,7 +87,7 @@ export async function findMoviesByMood(color: string): Promise<Record<string, Mo
 
       // Calculate the total number of pixels in the palette image
       const totalPixels = imageBitmap.width * imageBitmap.height; // Use image dimensions for total pixels
-      console.log(`[${movie.id}] colorCount: ${colorCount}, totalPixels: ${totalPixels}`);
+      // console.log(`[${movie.id}] colorCount: ${colorCount}, totalPixels: ${totalPixels}`);
       const colorProportion = totalPixels > 0 ? colorCount / totalPixels : 0;
       imageBitmap.close(); // Close ImageBitmap after processing
 
