@@ -111,19 +111,23 @@ export async function findMoviesByMood(color: string): Promise<Record<string, Mo
   // Filter out movies where fetching/processing failed
   const filteredMoviesWithColor = moviesWithColorResults
     .filter((movie): movie is MoviePaletteDataWithColorCount => movie !== null) // Remove null entries from failed fetches/processing and assert type
+    .filter(movie => movie.colorProportion >= 0.2); // Apply the 20% threshold
 
   // Group movies by genre
   for (const genre of allGenres) {
-    const moviesForGenre = filteredMoviesWithColor
+    const moviesForGenre = filteredMoviesWithColor // Use the already thresholded movies
       .filter(movie => movie.genres.map(g => g.toLowerCase()).includes(genre.toLowerCase()))
-      .filter(movie => movie.colorCount > 0); // Ensure colorCount > 0 for movies in this genre
+      // The colorProportion filter above already ensures colorCount > 0 if totalPixels > 0
 
     // Sort movies within each genre by color count in descending order
     moviesForGenre.sort((a, b) => b.colorCount - a.colorCount);
 
-    // Only add the genre if there are movies that match the color
+    // Only add the genre if there are movies in this genre after applying the threshold
     if (moviesForGenre.length > 0) {
       resultsByGenre[genre] = moviesForGenre;
+    } else {
+      // If no movies match the color and genre after thresholding, do not include the genre
+      delete resultsByGenre[genre];
     }
   }
 
