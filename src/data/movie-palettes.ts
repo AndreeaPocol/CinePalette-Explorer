@@ -119,6 +119,20 @@ export const moviePalettes: MoviePaletteData[] = [
     youtubeKey: "R1fX9zjuaR8",
     genres: ["Action", "War"],
     posterUrl: "https://m.media-amazon.com/images/M/MV5BMTAzODQ0MjEwMjZeQTJeQWpwZ15BbWU4MDQ4MzUzNDIx._V1_SX300.jpg",
+  },
+  {
+    id: "tt14230388",
+    name: "Asteroid City",
+    youtubeKey: "ZPFj1k2Pn78",
+    genres: ["Comedy", "Drama", "Romance"],
+    posterUrl: "https://m.media-amazon.com/images/M/MV5BNDJmMzY0ZGUtYWE1My00OWViLTg1NTctOWMwZWJlNDQzNGRiXkEyXkFqcGdeQXVyMjkwOTAyMDU@._V1_SX300.jpg"
+  },
+  {
+    id: "tt0096895",
+    name: "Batman",
+    youtubeKey: "dgC9Q0uhX70",
+    genres: ["Action", "Adventure"],
+    posterUrl: "https://m.media-amazon.com/images/M/MV5BMTYwNjAyODIyMF5BMl5BanBnXkFtZTYwNDMwMDk2._V1_SX300.jpg"
   }
 ];
 
