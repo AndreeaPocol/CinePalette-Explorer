@@ -43,8 +43,8 @@ const RecommendationExplanationPanel: React.FC<RecommendationExplanationPanelPro
     <div style={{ fontFamily: 'Arial, sans-serif', padding: '16px' }}>
       <Typography variant="body1" gutterBottom>
         The movie <i>{recommendedMovieName}</i> was recommended based on your selection of <i>{selectedMovieName}</i>.
-        The recommendation is based on the Minimum Color Difference (MICD) model between the two movies.
-        The MICD between <i>{selectedMovieName}</i> and <i>{recommendedMovieName}</i> is: <b>{recommendedMovieMICD.toFixed(4)}</b>.
+        {/* The recommendation is based on the Minimum Color Difference (MICD) model between the two movies. */}
+        The similarity score between <i>{selectedMovieName}</i> and <i>{recommendedMovieName}</i> is: <b>{recommendedMovieMICD.toFixed(4)}</b>.
       </Typography>
       <Button onClick={handleToggleExpand} endIcon={<ExpandMoreIcon sx={{ transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.3s' }} />}>
         {isExpanded ? 'Hide Explanation' : 'Show Explanation'}

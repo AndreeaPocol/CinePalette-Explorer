@@ -123,7 +123,7 @@ export const moviePalettes: MoviePaletteData[] = [
   {
     id: "tt14230388",
     name: "Asteroid City",
-    youtubeKey: "ZPFj1k2Pn78",
+    youtubeKey: "9FXCSXuGTF4",
     genres: ["Comedy", "Drama", "Romance"],
     posterUrl: "https://m.media-amazon.com/images/M/MV5BNDJmMzY0ZGUtYWE1My00OWViLTg1NTctOWMwZWJlNDQzNGRiXkEyXkFqcGdeQXVyMjkwOTAyMDU@._V1_SX300.jpg"
   },
