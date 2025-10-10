@@ -73,7 +73,8 @@ export default function CinePaletteExplorer(): ReactElement {
   const [moodColor, setMoodColor] = useState<string>('');
   const [moodMovies, setMoodMovies] = useState<Record<string, MoviePaletteDataWithColorCount[]>>({});
   const [isLoadingMoodSearch, setIsLoadingMoodSearch] = useState<boolean>(false);
-  const [implementation, setImplementation] = useState<'hungarian' | 'micd'>('micd'); // State for implementation method
+  const [implementation, setImplementation] = useState<'hungarian' | 'micd'>('micd');
+  const [noMoodResults, setNoMoodResults] = useState<boolean>(false);
 
   // Define the desired order of colors for display
   const colorOrder = [
@@ -761,6 +762,7 @@ export default function CinePaletteExplorer(): ReactElement {
     setMoodColor('');
     setMoodMovies({});
     setIsLoadingMoodSearch(false);
+    setNoMoodResults(false);
   }
 
   useEffect(() => {
@@ -785,37 +787,33 @@ export default function CinePaletteExplorer(): ReactElement {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // Function to handle mood search
-  const handleMoodSearch = async () => {
-    console.log("handleMoodSearch triggered");
-    console.log('Mood Color:', moodColor);
-    if (!moodColor || moodColor === 'All') {
-      setError("Please select a color for the mood search.");
-      setMoodMovies({});
-    }
-    setIsLoadingMoodSearch(true);
-    try {
-      const result = findMoviesByMood(moodColor);
-      // Await the promise returned by findMoviesByMood and then log and set the state
-      result.then((moodMoviesResult: Record<string, MoviePaletteDataWithColorCount[]>) => {
-      // console.log('findMoviesByMood result (Promise):', result);
-      // console.log('Resolved mood movies result:', moodMoviesResult);
+ const handleMoodSearch = async () => {
+  if (!moodColor || moodColor === 'All') {
+    setError("Please select a color for the mood search.");
+    setMoodMovies({});
+    setNoMoodResults(false);
+    return;
+  }
+  setIsLoadingMoodSearch(true);
+  setMoodMovies({});
+  setNoMoodResults(false);
+  setError(null);
+  try {
+    const moodMoviesResult = await findMoviesByMood(moodColor);
+    const hasResults = moodMoviesResult && Object.values(moodMoviesResult).some(movies => movies.length > 0);
+    if (hasResults) {
       setMoodMovies(moodMoviesResult);
-      // console.log('Mood movies set:', moodMoviesResult);
-      setIsLoadingMoodSearch(false);
-      setError(null);
-      });
-    } catch (err: any) {
-      console.error("Error during mood search:", err);
-      setError(`An error occurred during the mood search: ${err.message || 'Unknown error'}`);
-      setIsLoadingMoodSearch(false);
-      setMoodMovies({});
-    } finally {
-      // This block will execute regardless of success or error
-      // setIsLoadingMoodSearch(false); // Already handled in .then and .catch for clarity with console logs
-      setMoodMovies({}); // Clear previous mood results
+    } else {
+      setNoMoodResults(true);
     }
-  };
+  } catch (err: any) {
+    console.error("Error during mood search:", err);
+    setError(`An error occurred during the mood search: ${err.message || 'Unknown error'}`);
+  } finally {
+    setIsLoadingMoodSearch(false);
+  }
+};
+
   
   // Function to get the top 3 movies from the mood search results
   const getTopMoodMovies = (moodMovies: Record<string, MoviePaletteDataWithColorCount[]>) => {
@@ -959,6 +957,15 @@ export default function CinePaletteExplorer(): ReactElement {
                     Find Movies
                   </Button>
                 </div>
+                {noMoodResults && !isLoadingMoodSearch && (
+                  <Alert className="mt-4">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertTitle>No Movies Found</AlertTitle>
+                    <AlertDescription>
+                      We couldn't find any movies dominated by the color "{moodColor}". Please try a different color.
+                    </AlertDescription>
+                  </Alert>
+                )}
                 {Object.keys(moodMovies).length > 0 && topMoodMovies.length > 0 && (
                   <div className="mt-8">
                     <h3 className="text-xl font-semibold mb-4 text-foreground">Top matches for {moodColor} across all genres</h3>
