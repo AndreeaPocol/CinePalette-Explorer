@@ -90,7 +90,7 @@ export const moviePalettes: MoviePaletteData[] = [
     name: "On the Line",
     youtubeKey: "Ivl_vizw1TA",
     genres: ["Thriller"],
-    posterUrl: "https://m.media-amazon.com/images/M/MV5BOWZlNGZiMWEtZGU1OC00MWM0LTkyYTQtYmE5YjM0MTQ2YmQxXkEyXkFqcGdeQXVyMTE5MTgxNTk2._V1_SX300.jpg",
+    posterUrl: "https://image.tmdb.org/t/p/original/72X2UIE98b2ubP4NVmDMjLumaPO.jpg", // "https://m.media-amazon.com/images/M/MV5BOWZlNGZiMWEtZGU1OC00MWM0LTkyYTQtYmE5YjM0MTQ2YmQxXkEyXkFqcGdeQXVyMTE5MTgxNTk2._V1_SX300.jpg",
   },
   {
     id: "tt14775748",
@@ -126,6 +126,13 @@ export const moviePalettes: MoviePaletteData[] = [
     youtubeKey: "9FXCSXuGTF4",
     genres: ["Comedy", "Drama", "Romance"],
     posterUrl: "https://m.media-amazon.com/images/M/MV5BNDJmMzY0ZGUtYWE1My00OWViLTg1NTctOWMwZWJlNDQzNGRiXkEyXkFqcGdeQXVyMjkwOTAyMDU@._V1_SX300.jpg"
+  },
+  {
+    id: "tt0344510",
+    name: "A Very Long Engagement",
+    youtubeKey: "2HJXPvM1y2E",
+    genres: ["Drama", "Mystery", "Romance"],
+    posterUrl: "https://m.media-amazon.com/images/M/MV5BZWI4ZTgwMzktNjk3Yy00OTlhLTg3YTAtMTA1MWVlMWJiOTRiXkEyXkFqcGdeQXVyMTAwMzUyOTc@._V1_SX300.jpg"
   },
   {
     id: "tt0096895",
