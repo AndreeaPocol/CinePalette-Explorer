@@ -73,7 +73,7 @@ export default function CinePaletteExplorer(): ReactElement {
   const [moodColor, setMoodColor] = useState<string>('');
   const [moodMovies, setMoodMovies] = useState<Record<string, MoviePaletteDataWithColorCount[]>>({});
   const [isLoadingMoodSearch, setIsLoadingMoodSearch] = useState<boolean>(false);
-  const [implementation, setImplementation] = useState<'hungarian' | 'micd'>('micd');
+  const [implementation, setImplementation] = useState<'hungarian' | 'micd' | 'weighted_micd' >('micd');
   const [noMoodResults, setNoMoodResults] = useState<boolean>(false);
 
   // Define the desired order of colors for display
@@ -292,176 +292,211 @@ export default function CinePaletteExplorer(): ReactElement {
     }
   }, []);
 
-  // Calculate Mean Inter-color Distance (MICD) between two palettes
-  const calculateMICD = useCallback((colors1: { r: number; g: number; b: number, count: number }[], colors2: { r: number; g: number; b: number, count: number }[]): number | {
+  // Define a unified return type for clarity
+  type MICDResult = {
     micd: number, 
-    palette1To2: any[],
-    palette2To1: any[],
+    palette1To2: { color: any, closestInOtherPalette: any, deltaE: number, weight?: number }[],
+    palette2To1: { color: any, closestInOtherPalette: any, deltaE: number, weight?: number }[],
     totalPixels1: number,
     totalPixels2: number,
-    totalCost1: number,
-    totalCost2: number,
-  } | { micd: number } => {
+    totalCost1: number, // Sum of costs (weighted or unweighted) for P1
+    totalCost2: number, // Sum of costs (weighted or unweighted) for P2
+  };
+
+  // Calculate Mean Inter-color Distance (MICD) between two palettes
+  const calculateMICD = useCallback((
+    colors1: { r: number; g: number; b: number, count: number }[], 
+    colors2: { r: number; g: number; b: number, count: number }[]
+  ): number | MICDResult => {
+    
     const numColors1 = colors1.length;
     const numColors2 = colors2.length;
+    
+    // Return Infinity if either palette is empty
     if (!numColors1 || !numColors2) return Infinity;
 
     const totalPixels1 = colors1.reduce((sum, color) => sum + color.count, 0);
     const totalPixels2 = colors2.reduce((sum, color) => sum + color.count, 0);
 
-    if (implementation === 'hungarian') {
-      // Use the Hungarian algorithm to find the minimum weight perfect matching
-      // Create the cost matrix based on Delta E values
-      // Determine the dimensions of the cost matrix
-      const size = Math.max(numColors1, numColors2);
-      // Initialize costMatrix with padding (Infinity) for potential extra rows
-      const costMatrix: number[][] = Array.from({ length: size }, () => Array(size).fill(Infinity));
-
-      // Fill in the actual Delta E values
-      for (let i = 0; i < numColors1; i++) { // Iterate up to the actual number of colors in palette 1
-        for (let j = 0; j < numColors2; j++) {
-          const color1 = colors1[i];
-          const color2 = colors2[j];
-
-          // Ensure color objects are created within the loop
-          const color1Obj = new Color("srgb", [color1.r / 255, color1.g / 255, color1.b / 255]).to("lab");
-          const color2Obj = new Color("srgb", [color2.r / 255, color2.g / 255, color2.b / 255]).to("lab");
-
-          const deltaE = color1Obj.deltaE2000(color2Obj);
-
-          if (deltaE !== undefined && !isNaN(deltaE)) {
-            costMatrix[i][j] = deltaE;
-          } else {
-            // Keep as Infinity if calculation fails
-            console.warn(`Delta E calculation failed for colors: ${JSON.stringify(color1)} and ${JSON.stringify(color2)}`);
-          }
+    // Helper function to calculate Delta E between two RGB colors (0-255)
+    const getDeltaE = (c1: { r: number; g: number; b: number }, c2: { r: number; g: number; b: number }): number => {
+        try {
+            const color1Obj = new Color("srgb", [c1.r / 255, c1.g / 255, c1.b / 255]).to("lab");
+            const color2Obj = new Color("srgb", [c2.r / 255, c2.g / 255, c2.b / 255]).to("lab");
+            const deltaE = color1Obj.deltaE2000(color2Obj);
+            return (deltaE !== undefined && !isNaN(deltaE)) ? deltaE : Infinity;
+        } catch (e) {
+            console.warn("Delta E calculation failed.", e);
+            return Infinity;
         }
-      }
+    };
+    
+    // --- 1. Hungarian Algorithm (Optimal 1:1 Matching) ---
+    if (implementation === 'hungarian') {
+        const size = Math.max(numColors1, numColors2);
+        const costMatrix: number[][] = Array.from({ length: size }, () => Array(size).fill(Infinity));
 
-      const result = munkres(costMatrix); // Pass the cost matrix to the execute method
+        // Fill in the Delta E cost matrix
+        for (let i = 0; i < numColors1; i++) { 
+            for (let j = 0; j < numColors2; j++) {
+                costMatrix[i][j] = getDeltaE(colors1[i], colors2[j]);
+            }
+        }
 
-      // The result is an array of [row, col] pairs representing the optimal assignment
-      const matchedPairs: { color1Index: number; color2Index: number; deltaE: number }[] = result
-        .filter((pair: [number, number]) => pair[0] < numColors1 && pair[1] < numColors2) // Filter out padding matches
-        .map((pair: [number, number]) => {
-          const color1 = colors1[pair[0]];
-          const color2 = colors2[pair[1]];
-          // Recalculate deltaE for the matched pair using original colors
-          const color1Obj = new Color("srgb", [color1.r / 255, color1.g / 255, color1.b / 255]).to("lab");
-          const color2Obj = new Color("srgb", [color2.r / 255, color2.g / 255, color2.b / 255]).to("lab");
-          const deltaE = color1Obj.deltaE2000(color2Obj);
-          return {
-            color1Index: pair[0],
-            color2Index: pair[1],
-            deltaE: deltaE !== undefined && !isNaN(deltaE) ? deltaE : Infinity, // Use calculated deltaE or Infinity
-          };
+        const result = munkres(costMatrix); 
+
+        // The result is an array of [row, col] pairs representing the optimal assignment
+        const matchedPairs: { color1Index: number; color2Index: number; deltaE: number }[] = result
+            .filter((pair: [number, number]) => pair[0] < numColors1 && pair[1] < numColors2) // Filter out padding
+            .map((pair: [number, number]) => {
+                const deltaE = costMatrix[pair[0]][pair[1]]; // Retrieve cost from the matrix
+                return {
+                    color1Index: pair[0],
+                    color2Index: pair[1],
+                    deltaE: deltaE,
+                };
+            });
+
+        const totalCostSum = matchedPairs.reduce((sum, pair) => sum + pair.deltaE, 0);
+
+        // MICD is the average deltaE of the matched pairs
+        const micd = matchedPairs.length > 0 ? totalCostSum / matchedPairs.length : Infinity;
+
+        // Create detailed mapping results (symmetrical mapping)
+        const detailedMapping = matchedPairs.map(pair => ({
+            color: colors1[pair.color1Index],
+            closestInOtherPalette: colors2[pair.color2Index],
+            deltaE: pair.deltaE,
+        }));
+        
+        // Total cost per color count in the original palettes
+        const totalCost1 = numColors1 > 0 ? totalCostSum / numColors1 : Infinity; 
+        const totalCost2 = numColors2 > 0 ? totalCostSum / numColors2 : Infinity; 
+
+        return {
+            micd: micd,
+            palette1To2: detailedMapping,
+            palette2To1: detailedMapping,
+            totalPixels1: totalPixels1,
+            totalPixels2: totalPixels2,
+            totalCost1: totalCost1,
+            totalCost2: totalCost2,
+        };
+    } 
+    
+    // --- 2. Simple MICD (Unweighted Mean of Minimum Distances) ---
+    else if (implementation === 'micd') {
+        let totalMinDeltaE1 = 0;
+        const palette1To2 = colors1.map(color1 => {
+            let minDeltaE = Infinity;
+            let closestColor2 = null;
+            for (const color2 of colors2) {
+                const deltaE = getDeltaE(color1, color2);
+                if (deltaE < minDeltaE) {
+                    minDeltaE = deltaE;
+                    closestColor2 = color2;
+                }
+            }
+            if (minDeltaE !== Infinity) { totalMinDeltaE1 += minDeltaE; }
+            return { color: color1, closestInOtherPalette: closestColor2, deltaE: minDeltaE };
         });
 
-      // Calculate the total cost of the matching
-      const totalCost = matchedPairs.reduce((sum, pair) => sum + pair.deltaE, 0);
+        let totalMinDeltaE2 = 0;
+        const palette2To1 = colors2.map(color2 => {
+            let minDeltaE = Infinity;
+            let closestColor1 = null;
+            for (const color1 of colors1) {
+                const deltaE = getDeltaE(color2, color1); 
+                if (deltaE < minDeltaE) {
+                    minDeltaE = deltaE;
+                    closestColor1 = color1;
+                }
+            }
+            if (minDeltaE !== Infinity) { totalMinDeltaE2 += minDeltaE; }
+            return { color: color2, closestInOtherPalette: closestColor1, deltaE: minDeltaE };
+        });
 
-      // The MICD in this context is the average deltaE of the matched pairs
-      const micd = matchedPairs.length > 0 ? totalCost / matchedPairs.length : Infinity;
+        // Average minimum Delta E for each palette
+        const avgMinDeltaE1 = numColors1 > 0 ? totalMinDeltaE1 / numColors1 : Infinity;
+        const avgMinDeltaE2 = numColors2 > 0 ? totalMinDeltaE2 / numColors2 : Infinity;
 
-      return {
-        micd: micd,
-        palette1To2: matchedPairs.map(pair => ({
-          color: colors1[pair.color1Index],
-          closestInOtherPalette: colors2[pair.color2Index],
-          deltaE: pair.deltaE,
-        })),
-        palette2To1: matchedPairs.map(pair => ({
-          color: colors2[pair.color2Index],
-          closestInOtherPalette: colors1[pair.color2Index], // Matched pairs are the same from both perspectives
-          deltaE: pair.deltaE,
-        })),
-        totalPixels1: totalPixels1,
-        totalPixels2: totalPixels2,
-        totalCost1: totalCost / numColors1, // Total cost is the average of deltaEs of the matches
-        totalCost2: totalCost / numColors2, // Average for the other palette in a 1-to-1 matching
-      };
-    } else if (implementation === 'micd') {
-      // Original MICD Calculation Logic (Mean Inter-color Distance)
-      // This calculates the average of the minimum Delta E for each color in palette 1 to any color in palette 2.
-      // This is NOT the Hungarian algorithm and doesn't find an optimal one-to-one matching.
-      let totalMinDeltaE1 = 0;
-      const palette1To2 = colors1.map(color1 => {
-      let minDeltaE = Infinity;
-      let closestColor2 = null;
-      for (const color2 of colors2) {
-        // Skip comparison if color values are invalid
-        if (color1.r < 0 || color1.r > 255 || color1.g < 0 || color1.g > 255 || color1.b < 0 || color1.b > 255) {
-          console.warn(`Invalid color1 value in MICD calculation: ${JSON.stringify(color1)}. Skipping.`);
-          continue;
-        }
-        if (color2.r < 0 || color2.r > 255 || color2.g < 0 || color2.g > 255 || color2.b < 0 || color2.b > 255) {
-          console.warn(`Invalid color2 value in MICD calculation: ${JSON.stringify(color2)}. Skipping.`);
-          continue;
-        }
+        // MICD is the average of the two directional averages
+        const micd = (avgMinDeltaE1 + avgMinDeltaE2) / 2;
 
-        const color1Obj = new Color("srgb", [color1.r / 255, color1.g / 255, color1.b / 255]).to("lab");
-        const color2Obj = new Color("srgb", [color2.r / 255, color2.g / 255, color2.b / 255]).to("lab");
-        const deltaE = color1Obj.deltaE2000(color2Obj);
-
-        if (deltaE !== undefined && !isNaN(deltaE) && deltaE < minDeltaE) {
-          minDeltaE = deltaE;
-          closestColor2 = color2;
-        }
-      }
-      if (minDeltaE !== Infinity) {
-        totalMinDeltaE1 += minDeltaE;
-      }
-      return { color: color1, closestInOtherPalette: closestColor2, deltaE: minDeltaE };
-    });
-      let totalMinDeltaE2 = 0;
-      const palette2To1 = colors2.map(color2 => {
-        let minDeltaE = Infinity;
-        let closestColor1 = null;
-        for (const color1 of colors1) {
-          // Skip comparison if color values are invalid
-          if (color1.r < 0 || color1.r > 255 || color1.g < 0 || color1.g > 255 || color1.b < 0 || color1.b > 255) {
-            console.warn(`Invalid color1 value in MICD calculation: ${JSON.stringify(color1)}. Skipping.`);
-            continue;
-          }
-          if (color2.r < 0 || color2.r > 255 || color2.g < 0 || color2.g > 255 || color2.b < 0 || color2.b > 255) {
-            console.warn(`Invalid color2 value in MICD calculation: ${JSON.stringify(color2)}. Skipping.`);
-            continue;
-          }
-          const color1Obj = new Color("srgb", [color1.r / 255, color1.g / 255, color1.b / 255]).to("lab");
-          const color2Obj = new Color("srgb", [color2.r / 255, color2.g / 255, color2.b / 255]).to("lab");
-          const deltaE = color2Obj.deltaE2000(color1Obj); // Calculate Delta E in the other direction
-
-          if (deltaE !== undefined && !isNaN(deltaE) && deltaE < minDeltaE) {
-            minDeltaE = deltaE;
-            closestColor1 = color1;
-          }
-        }
-        if (minDeltaE !== Infinity) {
-          totalMinDeltaE2 += minDeltaE;
-        }
-        return { color: color2, closestInOtherPalette: closestColor1, deltaE: minDeltaE };
-      });
-
-      // Calculate the average of the average minimum Delta E from both perspectives
-      const avgMinDeltaE1 = numColors1 > 0 ? totalMinDeltaE1 / numColors1 : Infinity;
-      const avgMinDeltaE2 = numColors2 > 0 ? totalMinDeltaE2 / numColors2 : Infinity;
-
-      const micd = (avgMinDeltaE1 + avgMinDeltaE2) / 2;
-
-      return {
-        micd: micd,
-        palette1To2: palette1To2,
-        palette2To1: palette2To1,
-        totalPixels1: totalPixels1,
-        totalPixels2: totalPixels2,
-        totalCost1: totalMinDeltaE1,
-        totalCost2: totalMinDeltaE2,
-      };
+        return {
+            micd: micd,
+            palette1To2: palette1To2,
+            palette2To1: palette2To1,
+            totalPixels1: totalPixels1,
+            totalPixels2: totalPixels2,
+            totalCost1: totalMinDeltaE1,
+            totalCost2: totalMinDeltaE2,
+        };
     }
-    // Should not reach here if implementation is correctly 'hungarian' or 'micd'
+
+    // --- 3. Weighted MICD (Weighted Mean of Minimum Distances) ---
+    else if (implementation === 'weighted_micd') {
+        let weightedTotalDeltaE1 = 0;
+        let totalWeight1 = 0;
+        const palette1To2 = colors1.map(color1 => {
+            let minDeltaE = Infinity;
+            let closestColor2 = null;
+            for (const color2 of colors2) {
+                const deltaE = getDeltaE(color1, color2);
+                if (deltaE < minDeltaE) {
+                    minDeltaE = deltaE;
+                    closestColor2 = color2;
+                }
+            }
+            if (minDeltaE !== Infinity) {
+                weightedTotalDeltaE1 += minDeltaE * color1.count;
+                totalWeight1 += color1.count;
+            }
+            return { color: color1, closestInOtherPalette: closestColor2, deltaE: minDeltaE, weight: color1.count };
+        });
+
+        let weightedTotalDeltaE2 = 0;
+        let totalWeight2 = 0;
+        const palette2To1 = colors2.map(color2 => {
+            let minDeltaE = Infinity;
+            let closestColor1 = null;
+            for (const color1 of colors1) {
+                const deltaE = getDeltaE(color2, color1); 
+                if (deltaE < minDeltaE) {
+                    minDeltaE = deltaE;
+                    closestColor1 = color1;
+                }
+            }
+            if (minDeltaE !== Infinity) {
+                weightedTotalDeltaE2 += minDeltaE * color2.count;
+                totalWeight2 += color2.count;
+            }
+            return { color: color2, closestInOtherPalette: closestColor1, deltaE: minDeltaE, weight: color2.count };
+        });
+
+        // Weighted Average minimum Delta E for each palette
+        // Note: totalWeightX should equal totalPixelsX if all colors are valid.
+        const weightedAvgMinDeltaE1 = totalWeight1 > 0 ? weightedTotalDeltaE1 / totalWeight1 : Infinity;
+        const weightedAvgMinDeltaE2 = totalWeight2 > 0 ? weightedTotalDeltaE2 / totalWeight2 : Infinity;
+
+        // Weighted MICD is the average of the two directional weighted averages
+        const micd = (weightedAvgMinDeltaE1 + weightedAvgMinDeltaE2) / 2;
+
+        return {
+            micd: micd,
+            palette1To2: palette1To2,
+            palette2To1: palette2To1,
+            totalPixels1: totalPixels1,
+            totalPixels2: totalPixels2,
+            totalCost1: weightedTotalDeltaE1, // Total weighted cost
+            totalCost2: weightedTotalDeltaE2, // Total weighted cost
+        };
+    }
+    
+    // Fallback for unknown implementation type
     console.error(`Unknown implementation method: ${implementation}`);
     return Infinity;
-  }, [implementation]); // Add implementation to useCallback dependencies
+  }, [implementation]);
 
   const [detailedMICDExplanation, setDetailedMICDExplanation] = useState<any>(null); // Moved state declaration outside useCallback
   const findMostSimilarMovie = useCallback(async () => {
