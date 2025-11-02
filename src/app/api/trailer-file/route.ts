@@ -37,27 +37,27 @@ export async function GET(req: NextRequest): Promise<NextResponse<TrailerFileApi
 
     // Validate input using Zod
     const validatedInput = TrailerFileApiInputSchema.parse({ movieId, frameFile });
-
-    // Construct paths
-    const trailersBasePath = path.join('/frames');
-    const trailerFolderPath = path.join(trailersBasePath, validatedInput.movieId, 'trailer');
-
-    // Extract filename without extension from frameFile and append the expected trailer extension (assuming .png for now)
-    const frameFileNameWithoutExt = path.parse(validatedInput.frameFile).name;
-    const trailerFileName = `${frameFileNameWithoutExt}.png`; // Assuming trailer files are PNGs
-    const trailerFilePath = path.join(trailerFolderPath, trailerFileName);
+    // Construct the full path for server-side file system access
+    const trailerDiskPath = path.join(process.cwd(), 'public', 'frames', validatedInput.movieId, 'trailer', validatedInput.frameFile);
+    // Construct the web-accessible URL path for the client
+    const trailerUrlPath = path.join('/frames', validatedInput.movieId, 'trailer', validatedInput.frameFile);
 
     try {
-      // If access is successful, the file exists
-      return NextResponse.json({ success: true, trailer: trailerFilePath });
+      // Check if the file actually exists at the physical location
+      await access(trailerDiskPath);
+
+      // If access() is successful, the file exists. Return the URL path.
+      return NextResponse.json({ success: true, trailer: trailerUrlPath });
     } catch (err: any) {
-      // If access fails with ENOENT, the file doesn't exist
-      if (err.code === 'ENOENT') {
-        return NextResponse.json({ success: true, trailer: '' }); // Indicate success but no file found
-      }
-      // Log other potential file system errors
-      console.error(`Error checking for trailer file '${trailerFilePath}' for movie ID ${validatedInput.movieId}:`, err);
-      return NextResponse.json({ success: false, error: 'Failed to check trailer file existence.' }, { status: 500 });
+        // If access() throws an error, check if it's because the file doesn't exist
+        if (err.code === 'ENOENT') {
+            // This is an expected case, not an error.
+            return NextResponse.json({ success: true, trailer: '' });
+        }
+
+        // For any other errors (e.g., permissions), log it as a server error
+        console.error(`Error accessing trailer file '${trailerDiskPath}':`, err);
+        return NextResponse.json({ success: false, error: 'Server error while checking for trailer file.' }, { status: 500 });
     }
   } catch (error) {
     // Handle Zod validation errors

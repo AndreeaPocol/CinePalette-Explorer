@@ -747,24 +747,25 @@ export default function CinePaletteExplorer(): ReactElement {
     try {
       // Extract the base filename without extension
       const baseFilename = frameFile.substring(0, frameFile.lastIndexOf('.')) || frameFile;
-      // Assume trailer files are PNGs for now, construct the expected trailer filename
-      const trailerFilename = `${baseFilename}.png`;
+      const possibleExtensions = ['png', 'jpg', 'jpeg'];
+      let foundTrailer = false;
 
-      const response = await fetch(`/api/trailer-file?movieId=${selectedMovieId}&frameFile=${trailerFilename}`);
-      if (!response.ok) {
-        throw new Error(`API request failed with status ${response.status}`);
+      for (const ext of possibleExtensions) {
+        const trailerFilename = `${baseFilename}.${ext}`;
+        const response = await fetch(`/api/trailer-file?movieId=${selectedMovieId}&frameFile=${trailerFilename}`);
+
+        if (response.ok) {
+          const data: TrailerFileApiOutput = await response.json();
+          if (data.success && data.trailer && data.trailer !== '') {
+            console.log("Trailer image found:", data.trailer);
+            setTrailerImagePath(data.trailer);
+            foundTrailer = true;
+            break; // Exit loop once a trailer is found
+          }
+        }
       }
-      const data: TrailerFileApiOutput = await response.json();
-      if (data.success && data.trailer && data.trailer !== '') { // Check if trailer is not an empty string
-        // Construct the full path for the trailer image
-        console.log("Trailer image found:", data.trailer);
-        // Prepend the base path if the API returns a relative path
-        // Assuming API returns like '/frames/tt.../trailer/file.png'
-        setTrailerImagePath(data.trailer);
-      } else if (!data.success) {
-        console.error("Error fetching trailer file info:", data.error);
-      } else {
-        // This condition means success was true but data.trailer was empty or undefined
+
+      if (!foundTrailer) {
         console.log(`No corresponding trailer file found for frame: ${frameFile}`);
       }
     } catch (error) {
