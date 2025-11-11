@@ -1,67 +1,68 @@
 
 'use server';
 
-import { readdir } from 'fs/promises';
-import path from 'path';
-import { ZodError, z } from 'zod';
+import { z } from 'zod';
+import { getFullFrameList } from '../data/frame-cache';
+
 
 // Define the input schema for validation
 const InputSchema = z.object({
   movieId: z.string().regex(/^tt\d+$/, 'Invalid IMDb ID format.'), // Basic validation for IMDb ID format
 });
 
-// Define the output schema
-const OutputSchema = z.object({
-  success: z.boolean(),
-  data: z.array(z.string()).optional(), // Array of color hex strings (folder names)
-  error: z.string().optional(),
-});
 
-export type GetColorFrameFoldersOutput = z.infer<typeof OutputSchema>;
+export type FrameData = {
+  fileName: string;
+}
+
+export type GetColorFrameFoldersPaginationOutput = {
+  frames: FrameData[];
+  hasMore: boolean; // Indicates if more frames are available to fetch
+  error?: string; // Optional error message
+}
 
 /**
- * Fetches the names of subdirectories within the public/frames/{movieId} directory
- * that match a hex color format (#RRGGBB).
+ * Fetches frames for a specific color and movie, supporting pagination.
  *
- * @param input - An object containing the movieId.
- * @returns An object with success status, data (array of color folder names), or an error message.
+ * @param input - An object containing movieId, colorHex, page, and pageSize.
+ * @returns An object containing the frames array, a boolean indicating if more pages exist, and an optional error.
  */
-export async function getColorFrameFolders(input: {
+export async function getColorFrameFoldersPaginated(input: {
   movieId: string;
-}): Promise<GetColorFrameFoldersOutput> {
+  color: string;
+  page: number;
+  pageSize: number;
+}): Promise<GetColorFrameFoldersPaginationOutput> {
+  const { movieId, color, page, pageSize } = input;
+  console.log(`Fetching frames for ${movieId}, color ${color} (Page ${page}, Size ${pageSize})`);
+
   try {
     // Validate input
     const validatedInput = InputSchema.parse(input);
     const { movieId } = validatedInput;
 
-    // Construct the full path to the movie's frame directory within /public
-    // process.cwd() points to the root of the Next.js project
-    const framesBasePath = path.join(process.cwd(), 'public', 'frames');
-    const movieFramesPath = path.join(framesBasePath, movieId);
+    const frameFiles = await getFullFrameList(movieId, color); // Instant lookup
 
-    try {
-      const dirEntries = await readdir(movieFramesPath, { withFileTypes: true });
-      const colorFolders = dirEntries.filter((entry) => entry.isDirectory()
-        )
-        .map((entry) => entry.name); // Extract folder names
+    // Apply pagination logic
+    const start = page * pageSize;
+    const end = start + pageSize;
+    const paginatedFramePaths = frameFiles.slice(start, end);
 
-      return { success: true, data: colorFolders };
-    } catch (err: any) {
-      if (err.code === 'ENOENT') {
-        // Directory not found is not necessarily a server error, but indicates no frames
-        console.warn(`Frame directory not found for movie ID ${movieId}: ${movieFramesPath}`);
-        return { success: true, data: [] }; // Return success with empty data
-      }
-      // Log other file system errors
-      console.error(`Error reading frame directory for movie ID ${movieId}:`, err);
-      return { success: false, error: 'Failed to read frame data.' };
-    }
+    // 4. Check if there are more frames available after this page
+    const hasMore = end < frameFiles.length;
+
+    // 5. Transform paths into FrameData objects (MOCKING the color data)
+    const frames: FrameData[] = paginatedFramePaths.map(fileName => ({
+      fileName: fileName,
+    }));
+
+    return { frames, hasMore};
   } catch (error) {
-     if (error instanceof ZodError) {
-        console.error('Validation error fetching color frames:', error.errors);
-        return { success: false, error: 'Invalid input format.' };
-    }
-    console.error('Unexpected error fetching color frames:', error);
-    return { success: false, error: 'An unexpected error occurred.' };
+    console.error('Server action failed:', error);
+    return {
+      frames: [],
+      hasMore: false,
+      error: 'Failed to load frame data due to a server error.',
+    };
   }
 }

@@ -18,11 +18,10 @@ import { getMoviePaletteById, getAllMoviePalettes, type MoviePaletteData } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Info, Loader2, Search, Image as ImageIcon, AlertCircle, X, ArrowLeft, ArrowUp } from 'lucide-react';
 import Image from 'next/image';
-import { getColorFrameFolders, type GetColorFrameFoldersOutput } from '@/actions/get-color-frames';
+import { getColorFrameFoldersPaginated, type GetColorFrameFoldersPaginationOutput, FrameData } from '@/actions/get-color-frames';
 import { getColorAtPixel, hexToHsv } from '@/lib/color-utils';
 import { explainColorPalette, type ExplainColorPaletteOutput } from '@/ai/flows/explain-color-palette';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import type { FrameFilesApiOutput } from '@/app/api/frame-files/route';
 import type { TrailerFileApiOutput } from '@/app/api/trailer-file/route';
 import Link from "next/link";
 import { findMoviesByMood } from '@/movie-mood-finder';
@@ -33,7 +32,6 @@ import type { MoviePaletteDataWithColorCount } from '@/movie-mood-finder';
 
 type MoviePaletteDataWithId = MoviePaletteData & { id: string };
 type FrameFiles = Record<string, string[]>; // Stores filenames for each color
-type ColorExplanations = Record<string, string | null | 'loading' | 'error'>;
 
 export default function CinePaletteExplorer(): ReactElement {
   const [isFrameModalOpen, setIsFrameModalOpen] = useState<boolean>(false); // State to control the visibility of the frame modal
@@ -58,10 +56,9 @@ export default function CinePaletteExplorer(): ReactElement {
   const [paletteImageError, setPaletteImageError] = useState<boolean>(false); // State to track if there's an error loading the palette image
   const [frameErrors, setFrameErrors] = useState<Record<string, Record<string, boolean>>>({}); // State to track loading errors for each frame
   const [frameFiles, setFrameFiles] = useState<FrameFiles>({}); // State to store the filenames of frames for each color
-  const [isLoadingFrameFiles, setIsLoadingFrameFiles] = useState<Record<string, boolean>>({}); // State to track loading status of frames for each color
-  const [colorExplanations, setColorExplanations] = useState<ColorExplanations>({});
-  const [isLoadingExplanation, setIsLoadingExplanation] = useState<Record<string, boolean>>({});
-  const [explanationErrors, setExplanationErrors] = useState<Record<string, string | null>>({}); // State to track errors for explanations
+  const [colorExplanation, setColorExplanation] = useState<string | null>('');
+  const [isLoadingExplanation, setIsLoadingExplanation] = useState<boolean>(false);
+  const [explanationError, setExplanationError] = useState<string | null>(null); // State to track errors for explanations
   const [tooltipOpen, setTooltipOpen] = useState<Record<string, boolean>>({});
   const [showBackToTop, setShowBackToTop] = useState(false);
 
@@ -76,6 +73,13 @@ export default function CinePaletteExplorer(): ReactElement {
   const [implementation, setImplementation] = useState<'hungarian' | 'micd' | 'weighted_micd' >('micd');
   const [noMoodResults, setNoMoodResults] = useState<boolean>(false);
 
+  // --- Pagination State for Frames ---
+  const [paginatedFrames, setPaginatedFrames] = useState<FrameData[]>([]);
+  const [isLoadingMoreFrames, setIsLoadingMoreFrames] = useState(false);
+  const [hasMoreFrames, setHasMoreFrames] = useState(false);
+  const [currentFramePage, setCurrentFramePage] = useState(0);
+
+
   // Define the desired order of colors for display
   const colorOrder = [
     'red',
@@ -89,6 +93,24 @@ export default function CinePaletteExplorer(): ReactElement {
     'trailer'
   ];
 
+  const FRAME_PAGE_SIZE = 20;
+
+
+  const resetState = () => {
+    setColorFolders([]);
+    setFrameFiles({});
+    setFrameErrors({});
+    setSelectedColor(null);
+    setPaletteImageError(false);
+    setPaginatedFrames([]);
+    setColorExplanation('')
+    setCurrentFramePage(0);
+    setHasMoreFrames(false);
+    setIsLoadingMoreFrames(false);
+    setIsLoadingExplanation(false);
+  }
+
+
   // Fetch movie details when the selected movie ID changes
   useEffect(() => {
       if (selectedMovieId === '') return;
@@ -96,139 +118,33 @@ export default function CinePaletteExplorer(): ReactElement {
         const movieData = getMoviePaletteById(selectedMovieId);
         if (movieData) {
           setSelectedMovieData(movieData);
-          setColorExplanations({});
-          setIsLoadingExplanation({});
           setSelectedMoviePalettePath(path.join(process.cwd(), 'palettes', `${movieData.id}.png`));
           setIsMovieSelected(true);
           setError(null);
-          setPaletteImageError(false);
-          setFrameErrors({});
-          setFrameFiles({});
-          setIsLoadingFrameFiles({});
+          resetState();
 
-          const fetchFolders = async () => {
-            setIsLoadingFolders(true);
-            setColorFolders([]);
-            try {
-              const result: GetColorFrameFoldersOutput = await getColorFrameFolders({ movieId: selectedMovieId });
-              if (result.success && result.data) {
-                // Sort the received colors based on the defined order, default to original if not in list.
-                const sortedColors = result.data.sort((a, b) => {
-                    return colorOrder.indexOf(a) - colorOrder.indexOf(b);
-                });
-                setColorFolders(sortedColors);
-                if (result.data.length === 0) {
-                  console.log(`No frame folders found for ${selectedMovieId}.`);
-                }
-                // Initialize frameFiles structure
-                const initialFrameFiles: FrameFiles = {};
-                result.data.forEach(color => initialFrameFiles[color] = []);
-                setFrameFiles(initialFrameFiles);
-
-                // Fetch explanations for each color
-                const fetchExplanations = async () => {
-                  const newExplanations: Record<string, string> = {};
-                  const newLoadingStates: Record<string, boolean> = {};
-                  const newErrorStates: Record<string, string | null> = {};
-
-                  for (const color of sortedColors) {
-                    newLoadingStates[color] = true;
-                    setIsLoadingExplanation(prev => ({ ...prev, [color]: true }));
-                    try {
-                      const explanationResult = await explainColorPalette({ movieId: selectedMovieId, color, movieName: movieData.name });
-                      if (explanationResult.success && explanationResult.explanation) {
-                        newExplanations[color] = explanationResult.explanation;
-                        newErrorStates[color] = null;
-                      } else {
-                        newErrorStates[color] = explanationResult.error || `Failed to get explanation for ${color}.`;
-                      }
-                    } catch (aiError: any) {
-                      newErrorStates[color] = `An error occurred getting explanation for ${color}: ${aiError.message}`;
-                    } finally {
-                      setIsLoadingExplanation(prev => ({ ...prev, [color]: false }));
-                    }
-                  }
-                  setColorExplanations(newExplanations);
-                  setExplanationErrors(newErrorStates);
-                  setIsLoadingExplanation({}); // Reset all loading states after the loop
-                };
-                fetchExplanations();
-              } else {
-                console.error("Error fetching color folders:", result.error);
-                setError(result.error || 'Failed to load frame data.');
-              }
-            } catch (fetchError) {
-              console.error("Exception fetching color folders:", fetchError);
-              setError('An error occurred while fetching frame data.');
-            } finally {
-              setIsLoadingFolders(false);
-            }
-          };
-          fetchFolders();
+          findMostSimilarMovie();
         } 
         else {
           setSelectedMovieData(null);
           setSelectedMoviePalettePath(null);
           setError(`Data inconsistency: Could not find data for valid ID ${selectedMovieId}.`);
           setIsMovieSelected(false);
-          setColorFolders([]);
-          setPaletteImageError(false);
-          setFrameErrors({});
-          setFrameFiles({});
-          setIsLoadingFrameFiles({});
-          setColorExplanations({});
-          setIsLoadingExplanation({});
+          resetState();
         }
       } else {
         setSelectedMovieData(null);
         setSelectedMoviePalettePath(null);
-        setColorFolders([]);
-        setPaletteImageError(false);
-        setFrameErrors({});
         setIsMovieSelected(false);
-        setFrameFiles({});
-        setIsLoadingFrameFiles({});
-        setSelectedColor(null); // Reset selected color when movie ID is cleared
-        setColorExplanations({});
-        setIsLoadingExplanation({});
+        setError(null);
+        resetState();
     }
   }, [selectedMovieId]);
 
-  // Fetch frame filenames when a color is selected
-  useEffect(() => {
-    if (selectedColor && selectedMovieId && !frameFiles[selectedColor]?.length && !isLoadingFrameFiles[selectedColor]) {
-      const fetchFilesForColor = async () => {
-        setIsLoadingFrameFiles(prev => ({ ...prev, [selectedColor]: true }));
-        try {
-          const response = await fetch(`/api/frame-files?movieId=${selectedMovieId}&color=${selectedColor}`);
-          const data: FrameFilesApiOutput = await response.json();
-          if (data.success && data.files) {
-            setFrameFiles(prev => ({ ...prev, [selectedColor]: data.files ?? [] }));
-            // Initialize error state for the new frames
-            const newErrors: Record<string, boolean> = {};
-            (data.files ?? []).forEach(file => newErrors[file] = false);
-            setFrameErrors(prev => ({...prev, [selectedColor]: newErrors }));
-          } else {
-            console.error(`Error fetching files for color ${selectedColor}:`, data.error);
-            // Optionally set an error state for this color
-          }
-        } catch (err) {
-          console.error(`Exception fetching files for color ${selectedColor}:`, err);
-          // Optionally set an error state for this color
-        } finally {
-          setIsLoadingFrameFiles(prev => ({ ...prev, [selectedColor]: false }));
-        }
-      };
-      fetchFilesForColor();
-    }
-  }, [selectedColor, selectedMovieId, frameFiles, isLoadingFrameFiles]);
 
   const handleMovieSelect = (event?: FormEvent<HTMLFormElement>) => {
     event?.preventDefault();
-    // If a movie is already selected, don't re-process unless input has changed
-    // if (isMovieSelected && selectedMovieId === inputValue.trim().toLowerCase()) return;
     const trimmedInput = inputValue.trim(); // Trim whitespace from the input value
-
     if (!trimmedInput) {
       setError("Please enter a movie ID or name.");
       return;
@@ -241,19 +157,16 @@ export default function CinePaletteExplorer(): ReactElement {
       setSelectedMovieId('');
       setSelectedMovieData(null);
       setSelectedMoviePalettePath(null);
-      setColorFolders([]);
-      setFrameFiles({});
-      setFrameErrors({});
-      setIsLoadingFrameFiles({});
-      setSelectedColor(null);
-      setPaletteImageError(false);
       setError(null);
+      resetState();
 
-      // Set the new movie ID after a short delay to ensure state reset is processed
-      // This might not be strictly necessary but can help in complex state scenarios
-      setTimeout(() => {
-        setSelectedMovieId(movieData.id);
-      }, 0);
+      findMostSimilarMovie();
+
+      // // Set the new movie ID after a short delay to ensure state reset is processed
+      // // This might not be strictly necessary but can help in complex state scenarios
+      // setTimeout(() => {
+      //   setSelectedMovieId(movieData.id);
+      // }, 0);
     } else {
       setError(`Movie "${trimmedInput}" not found in our data. Please check the ID or name and try again.`);
       // Clear previous movie data if movie not found
@@ -261,14 +174,45 @@ export default function CinePaletteExplorer(): ReactElement {
       setSelectedMovieData(null);
       setSelectedMoviePalettePath(null);
       setIsMovieSelected(false);
-      setColorFolders([]);
-      setFrameFiles({});
-      setFrameErrors({});
-      setIsLoadingFrameFiles({});
-      setSelectedColor(null);
-      setPaletteImageError(false);
+      resetState();
     }
   };
+
+  /**
+   * Fetches the next page of frames for the currently selected color
+   * and appends them to the paginatedFrames state.
+   */
+  const loadMoreFrames = useCallback(async () => {
+    if (isLoadingMoreFrames || !hasMoreFrames || !selectedMovieId || !selectedColor) return;
+
+    setIsLoadingMoreFrames(true);
+    const nextPage = currentFramePage + 1;
+
+    try {
+      // Fetch the next page (page number is 0-indexed)
+      const result = await getColorFrameFoldersPaginated({
+        movieId: selectedMovieId,
+        color: selectedColor,
+        page: nextPage,
+        pageSize: FRAME_PAGE_SIZE,
+      }) as GetColorFrameFoldersPaginationOutput; // Cast to new type
+
+      if (result.error) {
+        throw new Error(result.error);
+      }
+
+      // Append new frames to the existing list
+      setPaginatedFrames(prevFrames => [...prevFrames, ...result.frames]);
+      setHasMoreFrames(result.hasMore);
+      setCurrentFramePage(nextPage);
+    } catch (e: any) {
+      console.error("Failed to load more frames:", e);
+      setError("Could not load more frames. Please try again.");
+      setHasMoreFrames(false); // Stop trying to load
+    } finally {
+      setIsLoadingMoreFrames(false);
+    }
+  }, [isLoadingMoreFrames, hasMoreFrames, selectedMovieId, selectedColor, currentFramePage]);
 
   const handleBrowseClick = () => {
     setIsBrowsing(true);
@@ -574,44 +518,29 @@ export default function CinePaletteExplorer(): ReactElement {
     }
   }, [selectedMovieId, fetchPaletteColors, calculateMICD]); // Depend on calculateMICD, not the version with details
 
-  useEffect(() => {
-    // Call findMostSimilarMovie when selectedMovieId changes
-    findMostSimilarMovie();
-  }, [selectedMovieId, findMostSimilarMovie]); // Include findMostSimilarMovie in dependencies
-
+  
   const fetchColorExplanation = useCallback(async (color: string) => {
-    if (!selectedMovieId || !selectedMovieData || !color || isLoadingExplanation[color] || colorExplanations[color] === 'loading') {
+    if (!selectedMovieId || !selectedMovieData || !color) {
+      console.error("ERROR: color is ${color} so no explanation will be fetched")
       return;
-  }
-
-    if (colorExplanations[color] === 'error' || !colorExplanations[color] ) {
-        setIsLoadingExplanation(prev => ({ ...prev, [color]: true }));
-        setColorExplanations(prev => ({ ...prev, [color]: 'loading' }));
-
-        try {
-          const result: ExplainColorPaletteOutput = await explainColorPalette({ movieId: selectedMovieId, movieName: selectedMovieData.name, color: color });
-          setColorExplanations(prev => ({ ...prev, [color]: result.explanation === undefined ? null : result.explanation }));
-        } catch (err) {
-          console.error(`Error fetching explanation for color ${color} (Movie ID: ${selectedMovieId}):`, err);
-          setColorExplanations(prev => ({ ...prev, [color]: "error" }));
-        } finally {
-          setIsLoadingExplanation(prev => ({ ...prev, [color]: false }));
-        }
     }
-  }, [selectedMovieId, colorExplanations, isLoadingExplanation, selectedMovieData]);
-
-  const handleColorInteraction = (color: string) => {
-    if (colorExplanations[color] !== 'loading' && typeof colorExplanations[color] !== 'string') {
-       fetchColorExplanation(color);
+    setIsLoadingExplanation(true);
+    try {
+      const explanationResult = await explainColorPalette({ movieId: selectedMovieId, color, movieName: selectedMovieData.name });
+      if (explanationResult.success && explanationResult.explanation) {
+        setColorExplanation(explanationResult.explanation);
+        setExplanationError(null);
+      } else {
+        setExplanationError(explanationResult.error || `Failed to get explanation for ${color}.`);
+      }
+    } catch (aiError: any) {
+      setExplanationError(`An error occurred getting explanation for ${color}: ${aiError.message}`);
+    } finally {
+      setIsLoadingExplanation(false);
     }
-  };
+    setIsLoadingExplanation(false); // Reset all loading states after the loop
+  }, [selectedMovieId, colorExplanation, isLoadingExplanation, selectedMovieData]);
 
-   const toggleTooltip = (color: string, isOpen: boolean) => {
-     setTooltipOpen(prev => ({...prev, [color]: isOpen }));
-     if(isOpen && colorExplanations[color] !== 'loading' && typeof colorExplanations[color] !== 'string') {
-        fetchColorExplanation(color);
-     }
-   }
 
   const handlePaletteImageError = (e: SyntheticEvent<HTMLImageElement, Event>) => {
     if (selectedMovieData && selectedMoviePalettePath) {
@@ -626,7 +555,7 @@ export default function CinePaletteExplorer(): ReactElement {
   };
 
   // Handle clicks on the color palette image
-  const handlePaletteClick = (event: React.MouseEvent<HTMLImageElement, MouseEvent>) => {
+  const handlePaletteClick = async (event: React.MouseEvent<HTMLImageElement, MouseEvent>) => {
     if (!selectedMoviePalettePath || paletteImageError) return; // Don't process clicks if image failed to load
     const img = paletteImageRef.current;
     if (!img || !img.complete || img.naturalWidth === 0) {
@@ -710,10 +639,66 @@ export default function CinePaletteExplorer(): ReactElement {
       }
     }
 
-    if (foundColor && colorFolders.includes(foundColor)) {
+    if (foundColor) {
       console.log(`Mapped click to color: ${foundColor}`);
       setSelectedColor(foundColor);
-      handleColorInteraction(foundColor);
+      
+      // --- START ASYNCHRONOUS EXECUTION ---
+
+      // 1. Reset pagination state for the new color, starting at Page 0
+      setPaginatedFrames([]);
+      setCurrentFramePage(0);
+      setHasMoreFrames(false);
+      setIsLoadingMoreFrames(true); // Set initial loading state for the frames
+      setError(null);
+      
+      // Clear AI explanation state, which will show a loading indicator for the AI text
+      setColorExplanation(''); 
+
+      // 2. Define the two asynchronous operations which will run concurrently
+      const framesPromise = getColorFrameFoldersPaginated({
+          movieId: selectedMovieId,
+          color: foundColor,
+          page: 0, // Corrected back to 0 for slice(page * pageSize) logic
+          pageSize: FRAME_PAGE_SIZE,
+      }) as Promise<GetColorFrameFoldersPaginationOutput>; // Cast the Promise type
+      const explanationPromise = fetchColorExplanation(foundColor);
+
+      // 3. Start Explanation in the background (FIRE-AND-FORGET)
+      // This will update the text state when it's done, non-blocking.
+      (async () => {
+          try {
+              const explanationResult = await explanationPromise;
+          } catch (e: any) {
+              console.error("Failed to load explanation:", e);
+              // Do not set global error; let the main block handle critical errors
+          }
+      })();
+      
+      try {
+        // 4. Await and update state for the Frames (FASTEST)
+        const framesResult = await framesPromise;
+
+        // 5. Handle the frames result
+        if (framesResult.error) {
+          throw new Error(framesResult.error);
+        }
+        
+        setPaginatedFrames(framesResult.frames);
+        setHasMoreFrames(framesResult.hasMore);
+
+      } catch (e: any) {
+        // Catch any error from the frames promise (critical failure)
+        console.error("Failed to load frames:", e);
+        setError("Could not load frames for this color. Please try again.");
+        setHasMoreFrames(false);
+      } finally {
+        // Turn off frame specific loading indicator
+        setIsLoadingMoreFrames(false);
+      }
+
+      // --- END ASYNCHRONOUS EXECUTION ---
+
     } else if (foundColor) {
       console.log(`Mapped click to color ${foundColor}, but no corresponding frame folder exists.`);
     } else {
@@ -823,33 +808,32 @@ export default function CinePaletteExplorer(): ReactElement {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
- const handleMoodSearch = async () => {
-  if (!moodColor || moodColor === 'All') {
-    setError("Please select a color for the mood search.");
+  const handleMoodSearch = async () => {
+    if (!moodColor || moodColor === 'All') {
+      setError("Please select a color for the mood search.");
+      setMoodMovies({});
+      setNoMoodResults(false);
+      return;
+    }
+    setIsLoadingMoodSearch(true);
     setMoodMovies({});
     setNoMoodResults(false);
-    return;
-  }
-  setIsLoadingMoodSearch(true);
-  setMoodMovies({});
-  setNoMoodResults(false);
-  setError(null);
-  try {
-    const moodMoviesResult = await findMoviesByMood(moodColor);
-    const hasResults = moodMoviesResult && Object.values(moodMoviesResult).some(movies => movies.length > 0);
-    if (hasResults) {
-      setMoodMovies(moodMoviesResult);
-    } else {
-      setNoMoodResults(true);
+    setError(null);
+    try {
+      const moodMoviesResult = await findMoviesByMood(moodColor);
+      const hasResults = moodMoviesResult && Object.values(moodMoviesResult).some(movies => movies.length > 0);
+      if (hasResults) {
+        setMoodMovies(moodMoviesResult);
+      } else {
+        setNoMoodResults(true);
+      }
+    } catch (err: any) {
+      console.error("Error during mood search:", err);
+      setError(`An error occurred during the mood search: ${err.message || 'Unknown error'}`);
+    } finally {
+      setIsLoadingMoodSearch(false);
     }
-  } catch (err: any) {
-    console.error("Error during mood search:", err);
-    setError(`An error occurred during the mood search: ${err.message || 'Unknown error'}`);
-  } finally {
-    setIsLoadingMoodSearch(false);
-  }
-};
-
+  };
   
   // Function to get the top 3 movies from the mood search results
   const getTopMoodMovies = (moodMovies: Record<string, MoviePaletteDataWithColorCount[]>) => {
@@ -1242,6 +1226,7 @@ export default function CinePaletteExplorer(): ReactElement {
                       Could not load the color palette image.
                     </div>
                   )}
+                  
                   {/* Frames by Color Section */}
                   <Card className="mt-6  border border-border rounded-lg shadow-sm overflow-hidden">
                     <CardHeader className="p-4 border-b border-border ">
@@ -1253,70 +1238,58 @@ export default function CinePaletteExplorer(): ReactElement {
                       </CardDescription> */}
                     </CardHeader>
                       <CardContent className="p-4 md:p-6">
-                          {isLoadingFolders ? (
-                            <div className="flex justify-center items-center p-6">
-                              <Loader2 className="h-6 w-6 animate-spin text-primary"/>
-                              <span className="ml-2 text-muted-foreground">Loading frame data...</span>
-                            </div>
-                          ) : colorFolders.length === 0 && !isLoadingFolders ? (
-                                <p className="text-center text-muted-foreground p-6">No frame color data found for this movie.</p>
-                          ) : !selectedColor ? (
+                          {!selectedColor ? (
                                 <p className="text-center text-muted-foreground p-6">Click on the color palette above to see corresponding frames.</p>
-                          ) : isLoadingFrameFiles[selectedColor] ? (
-                              <div className="flex justify-center items-center p-6">
-                                <Loader2 className="h-5 w-5 animate-spin text-primary"/>
-                                <span className="ml-2 text-muted-foreground text-sm">Loading frames for {selectedColor}...</span>
-                              </div>
                           ) : (
                               // Explanation Section
                               <div className="mb-6">
-                                {isLoadingExplanation[selectedColor] ? (
+                                {isLoadingExplanation ? (
                                   <div className="flex items-center text-muted-foreground">
                                     <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                                    Loading explanation...
+                                    Loading AI-generated color use explanation...
                                   </div>
-                                ) : explanationErrors[selectedColor] ? (
+                                ) : explanationError ? (
                                   <div className="flex items-center text-destructive text-sm">
                                     <AlertCircle className="h-4 w-4 mr-2" />
-                                    Error loading explanation: {explanationErrors[selectedColor]}
+                                    Error loading explanation: {explanationError}
                                   </div>
-                                ) : colorExplanations[selectedColor] ? (
+                                ) : colorExplanation ? (
                                   <ReactMarkdown 
-                                      // className="prose prose-sm dark:prose-invert text-muted-foreground"
-                                      remarkPlugins={[remarkGfm]}>
-                                    {colorExplanations[selectedColor]}
+                                    // className="prose prose-sm dark:prose-invert text-muted-foreground"
+                                    remarkPlugins={[remarkGfm]}>
+                                    {colorExplanation}
                                   </ReactMarkdown>
                                 ) : null}
                               </div>
                               )
                           }
                           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 md:gap-3">
-                              {(selectedColor !== null && frameFiles[selectedColor] && frameFiles[selectedColor].length > 0) ? (
-                                  [...(selectedColor !== null && frameFiles[selectedColor]) ? frameFiles[selectedColor] : []].sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })).map((file) => {
+                              {(selectedColor !== null && paginatedFrames && paginatedFrames.length > 0) ? (
+                                  [...(selectedColor !== null && paginatedFrames) ? paginatedFrames : []].sort((a, b) => a.fileName.localeCompare(b.fileName, undefined, { numeric: true, sensitivity: 'base' })).map((file) => {
                                     if(!selectedMovieId || !selectedColor) return null;
-                                    const framePath = `/frames/${selectedMovieId}/${selectedColor}/${file}`;
-                                    const hasError = (frameErrors[selectedColor] || {})?.[file] ?? false;
+                                    const framePath = `/frames/${selectedMovieId}/${selectedColor}/${file.fileName}`;
+                                    const hasError = (frameErrors[selectedColor] || {})?.[file.fileName] ?? false;
                                     return (
                                       <div
-                                        key={file}
+                                        key={file.fileName}
                                         className={cn(
                                             "relative aspect-video w-full bg-muted rounded overflow-hidden shadow-inner border border-border group transition-opacity",
                                             hasError ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:ring-2 hover:ring-primary hover:ring-offset-2 hover:opacity-90'
                                         )}
-                                        onClick={() => !hasError && handleFrameClick(file)}
+                                        onClick={() => !hasError && handleFrameClick(file.fileName)}
                                         role="button"
                                         tabIndex={hasError ? -1 : 0} // Make it focusable only if not error
-                                        aria-label={hasError ? `Frame ${file} failed to load` : `View frame ${file}`}
-                                        onKeyDown={(e) => { if (!hasError && (e.key === 'Enter' || e.key === ' ')) { handleFrameClick(file); }}} // Keyboard accessibility
+                                        aria-label={hasError ? `Frame ${file.fileName} failed to load` : `View frame ${file.fileName}`}
+                                        onKeyDown={(e) => { if (!hasError && (e.key === 'Enter' || e.key === ' ')) { handleFrameClick(file.fileName); }}} // Keyboard accessibility
                                       >
                                         {!hasError ? (
                                           <Image
                                               src={framePath}
-                                              alt={`Frame ${file} highlighting color ${selectedColor} from ${selectedMovieData.name}`}
+                                              alt={`Frame ${file.fileName} highlighting color ${selectedColor} from ${selectedMovieData.name}`}
                                               fill // Use fill for responsive images
                                               className="object-cover transition-transform duration-200 group-hover:scale-105" // Subtle hover effect
                                               sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, 20vw" // Optimize image loading
-                                              onError={() => handleFrameImageError(selectedColor, file)}
+                                              onError={() => handleFrameImageError(selectedColor, file.fileName)}
                                               loading="lazy" // Lazy load frame images
                                             />
                                         ) : (
@@ -1334,6 +1307,23 @@ export default function CinePaletteExplorer(): ReactElement {
                                   </div>
                               )}
                           </div>
+                          {/* Load More Frames Button - Added here */}
+                          {hasMoreFrames && (
+                              <div className="flex justify-center mt-6">
+                                  <Button
+                                      onClick={loadMoreFrames}
+                                      disabled={isLoadingMoreFrames}
+                                      variant="outline"
+                                      className="w-full sm:w-1/2"
+                                  >
+                                      {/* Show spinner when loading */}
+                                      {isLoadingMoreFrames ? (
+                                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                      ) : null}
+                                      Load More Frames
+                                  </Button>
+                              </div>
+                          )}
                       </CardContent>
                   </Card>
                   {/* Movie Recommendation Section */}
