@@ -6,7 +6,7 @@ import path from 'path';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, } from "@/components/ui/tooltip";
-import type { ReactElement, SyntheticEvent, ReactNode } from 'react';
+import type { ReactElement, SyntheticEvent } from 'react';
 import React, { useState, useEffect, useCallback, FormEvent, useRef } from 'react';
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -16,11 +16,11 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { getMoviePaletteById, getAllMoviePalettes, type MoviePaletteData } from '@/data/movie-palettes';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Info, Loader2, Search, Image as ImageIcon, AlertCircle, X, ArrowLeft, ArrowUp } from 'lucide-react';
+import { Loader2, Search, AlertCircle, X, ArrowLeft, ArrowUp } from 'lucide-react';
 import Image from 'next/image';
 import { getColorFrameFoldersPaginated, type GetColorFrameFoldersPaginationOutput, FrameData } from '@/actions/get-color-frames';
 import { getColorAtPixel, hexToHsv } from '@/lib/color-utils';
-import { explainColorPalette, type ExplainColorPaletteOutput } from '@/ai/flows/explain-color-palette';
+import { explainColorPalette } from '@/ai/flows/explain-color-palette';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import type { TrailerFileApiOutput } from '@/app/api/trailer-file/route';
 import Link from "next/link";
@@ -31,7 +31,6 @@ import type { MoviePaletteDataWithColorCount } from '@/movie-mood-finder';
 
 
 type MoviePaletteDataWithId = MoviePaletteData & { id: string };
-type FrameFiles = Record<string, string[]>; // Stores filenames for each color
 
 export default function CinePaletteExplorer(): ReactElement {
   const [isFrameModalOpen, setIsFrameModalOpen] = useState<boolean>(false); // State to control the visibility of the frame modal
@@ -46,26 +45,21 @@ export default function CinePaletteExplorer(): ReactElement {
   const [selectedMoviePalettePath, setSelectedMoviePalettePath] = useState<string | null>(null); // State to store the palette path of the selected movie
   const paletteImageRef = useRef<HTMLImageElement>(null); // Ref to the palette image element
   const [error, setError] = useState<string | null>(null); // State to store error messages
-  const [colorFolders, setColorFolders] = useState<string[]>([]); // State to store the list of color folders for the selected movie
 
   const [selectedFramePath, setSelectedFramePath] = useState<string | null>(null); // State to store the path of the selected frame for display in the modal
   const [trailerImagePath, setTrailerImagePath] = useState<string | null>(null); // State to store the path of the trailer image for display in the modal
-  const [isLoadingFolders, setIsLoadingFolders] = useState<boolean>(false); // State to track loading status of color folders
 
   const [selectedColor, setSelectedColor] = useState<string | null>(null); // State to store the currently selected color folder
   const [paletteImageError, setPaletteImageError] = useState<boolean>(false); // State to track if there's an error loading the palette image
   const [frameErrors, setFrameErrors] = useState<Record<string, Record<string, boolean>>>({}); // State to track loading errors for each frame
-  const [frameFiles, setFrameFiles] = useState<FrameFiles>({}); // State to store the filenames of frames for each color
   const [colorExplanation, setColorExplanation] = useState<string | null>('');
   const [isLoadingExplanation, setIsLoadingExplanation] = useState<boolean>(false);
   const [explanationError, setExplanationError] = useState<string | null>(null); // State to track errors for explanations
-  const [tooltipOpen, setTooltipOpen] = useState<Record<string, boolean>>({});
   const [showBackToTop, setShowBackToTop] = useState(false);
 
   const [topRecommendations, setTopRecommendations] = useState<{ movie: MoviePaletteDataWithId, micd: number }[]>([]);
   const [isLoadingRecommendation, setIsLoadingRecommendation] = useState<boolean>(false);
   const [recommendationError, setRecommendationError] = useState<string | null>(null);
-  const [micdValue, setMicdValue] = useState<number | null>(null);
 
   const [moodColor, setMoodColor] = useState<string>('');
   const [moodMovies, setMoodMovies] = useState<Record<string, MoviePaletteDataWithColorCount[]>>({});
@@ -79,26 +73,9 @@ export default function CinePaletteExplorer(): ReactElement {
   const [hasMoreFrames, setHasMoreFrames] = useState(false);
   const [currentFramePage, setCurrentFramePage] = useState(0);
 
-
-  // Define the desired order of colors for display
-  const colorOrder = [
-    'red',
-    'orange',
-    'yellow',
-    'green',
-    'cyan',
-    'blue',
-    'purple',
-    'pink',
-    'trailer'
-  ];
-
   const FRAME_PAGE_SIZE = 20;
 
-
   const resetState = () => {
-    setColorFolders([]);
-    setFrameFiles({});
     setFrameErrors({});
     setSelectedColor(null);
     setPaletteImageError(false);
@@ -109,7 +86,6 @@ export default function CinePaletteExplorer(): ReactElement {
     setIsLoadingMoreFrames(false);
     setIsLoadingExplanation(false);
   }
-
 
   // Fetch movie details when the selected movie ID changes
   useEffect(() => {
@@ -161,12 +137,7 @@ export default function CinePaletteExplorer(): ReactElement {
       resetState();
 
       findMostSimilarMovie();
-
-      // // Set the new movie ID after a short delay to ensure state reset is processed
-      // // This might not be strictly necessary but can help in complex state scenarios
-      // setTimeout(() => {
-      //   setSelectedMovieId(movieData.id);
-      // }, 0);
+      
     } else {
       setError(`Movie "${trimmedInput}" not found in our data. Please check the ID or name and try again.`);
       // Clear previous movie data if movie not found
@@ -501,12 +472,10 @@ export default function CinePaletteExplorer(): ReactElement {
             totalCost2: number,
           };
           setTopRecommendations(topThreeRecommendations); // Set the first recommended movie for the main display
-          setMicdValue(topThreeRecommendations[0].micd); // Set the MICD for the first recommended movie
           setDetailedMICDExplanation(detailedResult);
         }
       } else {
         setTopRecommendations([]);
-        setMicdValue(null);
         setDetailedMICDExplanation(null); // Clear detailed explanation if no recommendation found
         setRecommendationError('No similar palette found.');
       }
@@ -553,6 +522,7 @@ export default function CinePaletteExplorer(): ReactElement {
       setError('Failed to load palette image. Movie data might be incomplete.');
     }
   };
+
 
   // Handle clicks on the color palette image
   const handlePaletteClick = async (event: React.MouseEvent<HTMLImageElement, MouseEvent>) => {
@@ -643,9 +613,7 @@ export default function CinePaletteExplorer(): ReactElement {
       console.log(`Mapped click to color: ${foundColor}`);
       setSelectedColor(foundColor);
       
-      // --- START ASYNCHRONOUS EXECUTION ---
-
-      // 1. Reset pagination state for the new color, starting at Page 0
+      // Reset pagination state for the new color, starting at Page 0
       setPaginatedFrames([]);
       setCurrentFramePage(0);
       setHasMoreFrames(false);
@@ -655,7 +623,7 @@ export default function CinePaletteExplorer(): ReactElement {
       // Clear AI explanation state, which will show a loading indicator for the AI text
       setColorExplanation(''); 
 
-      // 2. Define the two asynchronous operations which will run concurrently
+      // Define the two asynchronous operations which will run concurrently
       const framesPromise = getColorFrameFoldersPaginated({
           movieId: selectedMovieId,
           color: foundColor,
@@ -696,9 +664,6 @@ export default function CinePaletteExplorer(): ReactElement {
         // Turn off frame specific loading indicator
         setIsLoadingMoreFrames(false);
       }
-
-      // --- END ASYNCHRONOUS EXECUTION ---
-
     } else if (foundColor) {
       console.log(`Mapped click to color ${foundColor}, but no corresponding frame folder exists.`);
     } else {
@@ -707,7 +672,6 @@ export default function CinePaletteExplorer(): ReactElement {
   };
 
   // Handle errors when loading frame images
-  // Handler for frame image errors
   const handleFrameImageError = (color: string, frameFile: string) => {
     console.error(`Error loading frame image: /frames/${selectedMovieId}/${color}/${frameFile}`);
     setFrameErrors(prev => ({
@@ -749,7 +713,6 @@ export default function CinePaletteExplorer(): ReactElement {
           }
         }
       }
-
       if (!foundTrailer) {
         console.log(`No corresponding trailer file found for frame: ${frameFile}`);
       }
@@ -1367,7 +1330,7 @@ export default function CinePaletteExplorer(): ReactElement {
                                     >
                                       {recommendation.movie.name}
                                   </span>
-                                  <p className="text-sm text-muted-foreground">MICD: {recommendation.micd.toFixed(2)}</p>
+                                  <p className="text-sm text-muted-foreground">Similarity score: {recommendation.micd.toFixed(2)}</p>
                                   {`/palettes/${recommendation.movie.id}.png` && (
                                     <div className="mt-2 w-full flex justify-center">
                                       <Image
