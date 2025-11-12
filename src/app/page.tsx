@@ -55,7 +55,7 @@ export default function CinePaletteExplorer(): ReactElement {
   const [explanationError, setExplanationError] = useState<string | null>(null); // State to track errors for explanations
   const [showBackToTop, setShowBackToTop] = useState(false);
 
-  const [topRecommendations, setTopRecommendations] = useState<{ movie: MovieMetadata, micd: number }[]>([]);
+  const [topRecommendations, setTopRecommendations] = useState<{ movie: MovieMetadata, score: number }[]>([]);
   const [isLoadingRecommendation, setIsLoadingRecommendation] = useState<boolean>(false);
   const [recommendationError, setRecommendationError] = useState<string | null>(null);
 
@@ -178,8 +178,8 @@ export default function CinePaletteExplorer(): ReactElement {
   }, []);
 
   // Define a unified return type for clarity
-  type MICDResult = {
-    micd: number, 
+  type MappingResult = {
+    score: number, 
     palette1To2: { color: any, closestInOtherPalette: any, deltaE: number, weight?: number }[],
     palette2To1: { color: any, closestInOtherPalette: any, deltaE: number, weight?: number }[],
     totalPixels1: number,
@@ -188,11 +188,11 @@ export default function CinePaletteExplorer(): ReactElement {
     totalCost2: number, // Sum of costs (weighted or unweighted) for P2
   };
 
-  // Calculate Mean Inter-color Distance (MICD) between two palettes
-  const calculateMICD = useCallback((
+  // Calculate (dis)similarity between two palettes
+  const calculateSimilarity = useCallback((
     colors1: { r: number; g: number; b: number, count: number }[], 
     colors2: { r: number; g: number; b: number, count: number }[]
-  ): number | MICDResult => {
+  ): number | MappingResult => {
     
     const numColors1 = colors1.length;
     const numColors2 = colors2.length;
@@ -245,7 +245,7 @@ export default function CinePaletteExplorer(): ReactElement {
         const totalCostSum = matchedPairs.reduce((sum, pair) => sum + pair.deltaE, 0);
 
         // MICD is the average deltaE of the matched pairs
-        const micd = matchedPairs.length > 0 ? totalCostSum / matchedPairs.length : Infinity;
+        const score = matchedPairs.length > 0 ? totalCostSum / matchedPairs.length : Infinity;
 
         // Create detailed mapping results (symmetrical mapping)
         const detailedMapping = matchedPairs.map(pair => ({
@@ -259,7 +259,7 @@ export default function CinePaletteExplorer(): ReactElement {
         const totalCost2 = numColors2 > 0 ? totalCostSum / numColors2 : Infinity; 
 
         return {
-            micd: micd,
+            score: score,
             palette1To2: detailedMapping,
             palette2To1: detailedMapping,
             totalPixels1: totalPixels1,
@@ -309,7 +309,7 @@ export default function CinePaletteExplorer(): ReactElement {
         const micd = (avgMinDeltaE1 + avgMinDeltaE2) / 2;
 
         return {
-            micd: micd,
+            score: micd,
             palette1To2: palette1To2,
             palette2To1: palette2To1,
             totalPixels1: totalPixels1,
@@ -368,7 +368,7 @@ export default function CinePaletteExplorer(): ReactElement {
         const micd = (weightedAvgMinDeltaE1 + weightedAvgMinDeltaE2) / 2;
 
         return {
-            micd: micd,
+            score: micd,
             palette1To2: palette1To2,
             palette2To1: palette2To1,
             totalPixels1: totalPixels1,
@@ -402,7 +402,7 @@ export default function CinePaletteExplorer(): ReactElement {
         return;
       }
 
-      const similarityScores: { movie: MovieMetadata, micd: number }[] = [];
+      const similarityScores: { movie: MovieMetadata, score: number }[] = [];
 
       for (const candidateMovie of allMovies) {
         if (candidateMovie.id === selectedMovieId) continue; // Skip the selected movie itself
@@ -410,17 +410,17 @@ export default function CinePaletteExplorer(): ReactElement {
         const candidateColors = await fetchPaletteColors(candidateMovie.id);
         if (!candidateColors || candidateColors.length === 0) continue; // Skip if candidate colors can't be fetched or are empty
 
-        const micdResult = calculateMICD(selectedMovieColors, candidateColors);
+        const micdResult = calculateSimilarity(selectedMovieColors, candidateColors);
 
         // Ensure we are comparing numbers
-        const micd = typeof micdResult === 'number' ? micdResult : micdResult.micd;
+        const result = typeof micdResult === 'number' ? micdResult : micdResult.score;
 
         // Store the similarity score and the movie
-        similarityScores.push({ movie: candidateMovie, micd: micd });
+        similarityScores.push({ movie: candidateMovie, score: result });
       }
 
       // Sort by MICD to find the top 3
-      similarityScores.sort((a, b) => a.micd - b.micd);
+      similarityScores.sort((a, b) => a.score - b.score);
 
       // Take the top 3
       const topThreeRecommendations = similarityScores.slice(0, 3);
@@ -434,8 +434,8 @@ export default function CinePaletteExplorer(): ReactElement {
           console.error(`Failed to fetch colors for recommended movie: ${topThreeRecommendations[0].movie.name}`);
           setDetailedMICDExplanation(null); // Clear detailed explanation if colors cannot be fetched
         } else {
-          const detailedResult = calculateMICD(selectedMovieColors, recommendedMovieColors) as {
-            micd: number,
+          const detailedResult = calculateSimilarity(selectedMovieColors, recommendedMovieColors) as {
+            score: number,
             palette1To2: any[],
             palette2To1: any[],
             totalCost1: number,
@@ -455,7 +455,7 @@ export default function CinePaletteExplorer(): ReactElement {
     } finally {
       setIsLoadingRecommendation(false);
     }
-  }, [selectedMovieId, fetchPaletteColors, calculateMICD]); // Depend on calculateMICD, not the version with details
+  }, [selectedMovieId, fetchPaletteColors, calculateSimilarity]); // Depend on calculateSimilarity, not the version with details
 
   
   const fetchColorExplanation = useCallback(async (color: string) => {
@@ -1319,7 +1319,7 @@ export default function CinePaletteExplorer(): ReactElement {
                                     >
                                       {recommendation.movie.name}
                                   </span>
-                                  <p className="text-sm text-muted-foreground">Similarity score: {recommendation.micd.toFixed(2)}</p>
+                                  <p className="text-sm text-muted-foreground">Similarity score: {recommendation.score.toFixed(2)}</p>
                                   {`/palettes/${recommendation.movie.id}.png` && (
                                     <div className="mt-2 w-full flex justify-center">
                                       <Image
@@ -1343,7 +1343,7 @@ export default function CinePaletteExplorer(): ReactElement {
                     <RecommendationExplanationPanel
                       selectedMovieName={selectedMovieData.name}
                       recommendedMovieName={topRecommendations[0].movie.name}
-                      recommendedMovieMICD={topRecommendations[0].micd}
+                      recommendedMovieMICD={topRecommendations[0].score}
                       explanationDetails={detailedMICDExplanation}
                     />
                     )}
