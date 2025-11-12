@@ -78,74 +78,46 @@ export default function CinePaletteExplorer(): ReactElement {
     setSelectedColor(null);
     setPaletteImageError(false);
     setPaginatedFrames([]);
-    setColorExplanation('')
+    setColorExplanation('');
     setCurrentFramePage(0);
     setHasMoreFrames(false);
     setIsLoadingMoreFrames(false);
     setIsLoadingExplanation(false);
   }
 
-  // Fetch movie details when the selected movie ID changes
+  // FAST Local Movie Data Loading
   useEffect(() => {
-      if (selectedMovieId === '') return;
-      if (selectedMovieId) {
-        const movieData = getMoviePaletteById(selectedMovieId);
-        if (movieData) {
-          setSelectedMovieData(movieData);
-          setSelectedMoviePalettePath(path.join(process.cwd(), 'palettes', `${movieData.id}.png`));
-          setIsMovieSelected(true);
-          setError(null);
-          resetState();
-
-          findMostSimilarMovie();
-        } 
-        else {
-          setSelectedMovieData(null);
-          setSelectedMoviePalettePath(null);
-          setError(`Data inconsistency: Could not find data for valid ID ${selectedMovieId}.`);
-          setIsMovieSelected(false);
-          resetState();
-        }
-      } else {
-        setSelectedMovieData(null);
-        setSelectedMoviePalettePath(null);
-        setIsMovieSelected(false);
-        setError(null);
-        resetState();
-    }
-  }, [selectedMovieId]);
-
-
-  const handleMovieSelect = (event?: FormEvent<HTMLFormElement>) => {
-    event?.preventDefault();
-    const trimmedInput = inputValue.trim(); // Trim whitespace from the input value
-    if (!trimmedInput) {
-      setError("Please enter a movie ID or name.");
-      return;
-    }
-
-    const movieData = getMoviePaletteById(trimmedInput); // getMoviePaletteById handles both ID and name
-
-    if (movieData) {
-      // Reset states before setting new movie ID to trigger effects correctly
-      setSelectedMovieId('');
-      setSelectedMovieData(null);
-      setSelectedMoviePalettePath(null);
-      setError(null);
-      resetState();
-
-      findMostSimilarMovie();
-      
-    } else {
-      setError(`Movie "${trimmedInput}" not found in our data. Please check the ID or name and try again.`);
-      // Clear previous movie data if movie not found
-      setSelectedMovieId('');
+    if (selectedMovieId === '') {
       setSelectedMovieData(null);
       setSelectedMoviePalettePath(null);
       setIsMovieSelected(false);
+      return;
+    }
+    
+    // Get movie data (synchronous lookup using the validated ID)
+    const movieData = getMoviePaletteById(selectedMovieId);
+
+    if (movieData) {
+      // Set the UI-critical data
+      setSelectedMovieData(movieData);
+      setSelectedMoviePalettePath(path.join(process.cwd(), 'palettes', `${movieData.id}.png`));
+      setIsMovieSelected(true);
+      setError(null);
+      resetState();
+      
+      findMostSimilarMovie();
+    } 
+    else {
+      // This 'else' only serves as a data integrity guardrail,
+      // as the submit handler should prevent it from running for invalid input.
+      setSelectedMovieData(null);
+      setSelectedMoviePalettePath(null);
+      setError(`Data inconsistency: Could not find data for valid ID ${selectedMovieId}.`);
+      setIsMovieSelected(false);
+      
       resetState();
     }
-  };
+  }, [selectedMovieId]);
 
   /**
    * Fetches the next page of frames for the currently selected color
@@ -832,7 +804,26 @@ export default function CinePaletteExplorer(): ReactElement {
                 <CardDescription className="text-center text-muted-foreground text-sm">Enter a movie's IMDb ID or name to find its visual palette.</CardDescription>
               </CardHeader>
               <CardContent className="p-4 md:p-6 space-y-4">
-                <form onSubmit={handleMovieSelect} className="relative flex items-center gap-3 w-full" aria-label="Search for movie palette">
+                    <form onSubmit={(e) => {
+                        e.preventDefault();
+                        const trimmedInput = inputValue.trim();
+                        if (!trimmedInput) {
+                            setError("Please enter a movie ID or name.");
+                            return;
+                        }
+
+                        // Lookup MUST happen here for immediate validation/error feedback
+                        const movieData = getMoviePaletteById(trimmedInput); 
+
+                        if (movieData) {
+                            // SUCCESS: Set the ID to trigger the decoupled useEffects
+                            setSelectedMovieId(trimmedInput);
+                        } else {
+                            // FAILURE: Set error message and clear selection state
+                            setError(`Movie "${trimmedInput}" not found in our data. Please check the ID or name and try again.`);
+                            setSelectedMovieId('');
+                        }
+                    }} className="relative flex items-center gap-3 w-full" aria-label="Search for movie palette">
                   {/* Span for suggestion, positioned absolutely */}
                   <span
                     className="absolute inset-0 flex items-center pl-3 pointer-events-none text-gray-400 overflow-hidden text-nowrap"
