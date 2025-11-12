@@ -1,5 +1,5 @@
 
-export interface MoviePaletteData {
+export interface MovieMetadata {
   id: string; // tconst
   name: string; // e.g., "The Shawshank Redemption"
   youtubeKey: string; // youtube key
@@ -7,7 +7,7 @@ export interface MoviePaletteData {
   posterUrl: string;
 }
 
-export const moviePalettes: MoviePaletteData[] = [
+export const movies: MovieMetadata[] = [
   {
     id: "tt2278388",
     name: "The Grand Budapest Hotel",
@@ -146,38 +146,35 @@ export const moviePalettes: MoviePaletteData[] = [
 /**
  * Retrieves movie palette data by its ID or name.
  * @param idOrName - The IMDb ID string (e.g., "tt0111161") or the movie name.
- * @returns The MoviePaletteData object if found, otherwise undefined.
+ * @returns The MovieMetadata object if found, otherwise undefined.
  */
-export function getMoviePaletteById(idOrName: string): MoviePaletteData | undefined {
+export function getMoviePaletteById(idOrName: string): MovieMetadata | undefined {
   // First, try to find by ID
   if (idOrName && idOrName.startsWith('tt')) {
-      const foundById = moviePalettes.find(palette => palette.id === idOrName);
+      const foundById = movies.find(palette => palette.id === idOrName);
       if(foundById){
         return foundById;
       }
   }
   
   // If not found by ID, try to find by name
-  return moviePalettes.find(palette => palette.name.toLowerCase() === idOrName.toLowerCase());
+  return movies.find(palette => palette.name.toLowerCase() === idOrName.toLowerCase());
 }
 
 /**
  * Retrieves movie palette data by its name.
  * @param name - The movie name
- * @returns The MoviePaletteData object if found, otherwise undefined.
+ * @returns The MovieMetadata object if found, otherwise undefined.
  */
-export function getMoviePaletteByName(name: string): MoviePaletteData | undefined {
-    return moviePalettes.find(palette => palette.name.toLowerCase() === name.toLowerCase());
+export function getMoviePaletteByName(name: string): MovieMetadata | undefined {
+    return movies.find(palette => palette.name.toLowerCase() === name.toLowerCase());
 }
 
-
-/**
-}
 
 /**
  * Gets all available movie palettes.
- * @returns An array of all MoviePaletteData objects.
+ * @returns An array of all MovieMetadata objects.
  */
-export function getAllMoviePalettes(): MoviePaletteData[] {
-    return moviePalettes;
+export function getAllMoviePalettes(): MovieMetadata[] {
+    return movies;
 }

@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { getMoviePaletteById, getAllMoviePalettes, type MoviePaletteData } from '@/data/movie-palettes';
+import { getMoviePaletteById, getAllMoviePalettes, type MovieMetadata } from '@/data/movie-palettes';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, Search, AlertCircle, X, ArrowLeft, ArrowUp } from 'lucide-react';
 import Image from 'next/image';
@@ -27,10 +27,8 @@ import Link from "next/link";
 import { findMoviesByMood } from '@/movie-mood-finder';
 import { MovieListDialog } from "@/components/movie-list-dialog";
 import RecommendationExplanationPanel from "@/components/recommendation-explanation-panel";
-import type { MoviePaletteDataWithColorCount } from '@/movie-mood-finder';
+import type { MovieColorPaletteData } from '@/movie-mood-finder';
 
-
-type MoviePaletteDataWithId = MoviePaletteData & { id: string };
 
 export default function CinePaletteExplorer(): ReactElement {
   const [isFrameModalOpen, setIsFrameModalOpen] = useState<boolean>(false); // State to control the visibility of the frame modal
@@ -41,7 +39,7 @@ export default function CinePaletteExplorer(): ReactElement {
   const [isMovieSelected, setIsMovieSelected] = useState<boolean>(false); // State to indicate if a movie is selected
 
   const [selectedMovieId, setSelectedMovieId] = useState<string>(''); // State to store the selected movie's ID
-  const [selectedMovieData, setSelectedMovieData] = useState<MoviePaletteData | null>(null); // State to store the data of the selected movie
+  const [selectedMovieData, setSelectedMovieData] = useState<MovieMetadata | null>(null); // State to store the data of the selected movie
   const [selectedMoviePalettePath, setSelectedMoviePalettePath] = useState<string | null>(null); // State to store the palette path of the selected movie
   const paletteImageRef = useRef<HTMLImageElement>(null); // Ref to the palette image element
   const [error, setError] = useState<string | null>(null); // State to store error messages
@@ -57,12 +55,12 @@ export default function CinePaletteExplorer(): ReactElement {
   const [explanationError, setExplanationError] = useState<string | null>(null); // State to track errors for explanations
   const [showBackToTop, setShowBackToTop] = useState(false);
 
-  const [topRecommendations, setTopRecommendations] = useState<{ movie: MoviePaletteDataWithId, micd: number }[]>([]);
+  const [topRecommendations, setTopRecommendations] = useState<{ movie: MovieMetadata, micd: number }[]>([]);
   const [isLoadingRecommendation, setIsLoadingRecommendation] = useState<boolean>(false);
   const [recommendationError, setRecommendationError] = useState<string | null>(null);
 
   const [moodColor, setMoodColor] = useState<string>('');
-  const [moodMovies, setMoodMovies] = useState<Record<string, MoviePaletteDataWithColorCount[]>>({});
+  const [moodMovies, setMoodMovies] = useState<Record<string, MovieColorPaletteData[]>>({});
   const [isLoadingMoodSearch, setIsLoadingMoodSearch] = useState<boolean>(false);
   const [implementation, setImplementation] = useState<'hungarian' | 'micd' | 'weighted_micd' >('micd');
   const [noMoodResults, setNoMoodResults] = useState<boolean>(false);
@@ -432,7 +430,7 @@ export default function CinePaletteExplorer(): ReactElement {
         return;
       }
 
-      const similarityScores: { movie: MoviePaletteDataWithId, micd: number }[] = [];
+      const similarityScores: { movie: MovieMetadata, micd: number }[] = [];
 
       for (const candidateMovie of allMovies) {
         if (candidateMovie.id === selectedMovieId) continue; // Skip the selected movie itself
@@ -799,11 +797,11 @@ export default function CinePaletteExplorer(): ReactElement {
   };
   
   // Function to get the top 3 movies from the mood search results
-  const getTopMoodMovies = (moodMovies: Record<string, MoviePaletteDataWithColorCount[]>) => {
+  const getTopMoodMovies = (moodMovies: Record<string, MovieColorPaletteData[]>) => {
     // Collect all movies from all genre lists
     const allMoodMoviesRaw = Object.values(moodMovies).flat();
     // Filter out duplicates based on movie ID
-    const uniqueMoviesMap = new Map<string, MoviePaletteDataWithColorCount>();
+    const uniqueMoviesMap = new Map<string, MovieColorPaletteData>();
     allMoodMoviesRaw.forEach(movie => {
         uniqueMoviesMap.set(movie.id, movie);
     });
@@ -964,7 +962,7 @@ export default function CinePaletteExplorer(): ReactElement {
                               <span className="text-base font-semibold text-primary hover:underline mr-3">
                                 {movie.name}
                               </span>
-                              <p className="text-sm text-muted-foreground">{((movie as MoviePaletteDataWithColorCount).colorProportion * 100).toFixed(2)}% match</p>
+                              <p className="text-sm text-muted-foreground">{((movie as MovieColorPaletteData).colorProportion * 100).toFixed(2)}% match</p>
                             </div>
                              {/* Display the palette image */}
                               <Image
@@ -983,7 +981,7 @@ export default function CinePaletteExplorer(): ReactElement {
                 {Object.keys(moodMovies).length > 0 && (
                   <div className="mt-8">
                   {Object.entries(moodMovies)
-                  .sort(([genreA], [genreB]) => genreA.localeCompare(genreB)).map(([genre, movies]: [string, MoviePaletteDataWithColorCount[]]) => (
+                  .sort(([genreA], [genreB]) => genreA.localeCompare(genreB)).map(([genre, movies]: [string, MovieColorPaletteData[]]) => (
                     movies.length > 0 && (
                       <div key={genre} className="mb-6">
                         <h3 className="text-xl font-semibold mb-3 text-foreground">{genre}</h3>
@@ -1012,7 +1010,7 @@ export default function CinePaletteExplorer(): ReactElement {
                                 <span className="text-base font-semibold text-primary hover:underline">
                                   {movie.name}
                                 </span>
-                                <p className="text-sm text-muted-foreground mb-2">{((movie as MoviePaletteDataWithColorCount).colorProportion * 100).toFixed(2)}% match</p> {/* Display proportion */}
+                                <p className="text-sm text-muted-foreground mb-2">{((movie as MovieColorPaletteData).colorProportion * 100).toFixed(2)}% match</p> {/* Display proportion */}
                                 {/* Display the palette image */}
                                 <div className="w-full flex justify-center">
                                   <Image
@@ -1388,7 +1386,7 @@ export default function CinePaletteExplorer(): ReactElement {
     </div>
   );
 };
-const allMovies: MoviePaletteDataWithId[] = getAllMoviePalettes()
+const allMovies: MovieMetadata[] = getAllMoviePalettes()
  .map(movie => ({
  ...movie,
  id: movie.id, // Ensure the id field is explicitly included

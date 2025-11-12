@@ -1,4 +1,4 @@
-import { moviePalettes, MoviePaletteData } from "@/data/movie-palettes";
+import { movies, MovieMetadata } from "@/data/movie-palettes";
 import { getColorAtPixel, hexToHsv } from '@/lib/color-utils';
 
 
@@ -8,7 +8,7 @@ interface ColorEntry {
   count: number;
 }
 
-export interface MoviePaletteDataWithColorCount extends MoviePaletteData {
+export interface MovieColorPaletteData extends MovieMetadata {
   colorCount: number;
   colorProportion: number;
 }
@@ -47,17 +47,17 @@ const isWithinRange = (hsvVal: { h: number; s: number; v: number }, rangeGroup: 
   }
 };
 
-export async function findMoviesByMood(color: string): Promise<Record<string, MoviePaletteDataWithColorCount[]>> {
+export async function findMoviesByMood(color: string): Promise<Record<string, MovieColorPaletteData[]>> {
   // console.log(`findMoviesByMood called with color: ${color}`);
 
-  const resultsByGenre: Record<string, MoviePaletteDataWithColorCount[]> = {};
+  const resultsByGenre: Record<string, MovieColorPaletteData[]> = {};
 
   // Get all unique genres
-  const allGenres = Array.from(new Set(moviePalettes.flatMap(movie => movie.genres)));
+  const allGenres = Array.from(new Set(movies.flatMap(movie => movie.genres)));
   // console.log('All genres:', allGenres);
 
   // Use Promise.all with .map to fetch and process palettes concurrently
-  const moviesWithColorPromises = moviePalettes.map(async (movie) => {
+  const moviesWithColorPromises = movies.map(async (movie) => {
     try {
       // Fetch the palette image (PNG)
       const paletteUrl = `/palettes/${movie.id}.png`;
@@ -95,7 +95,7 @@ export async function findMoviesByMood(color: string): Promise<Record<string, Mo
         ...movie, // Spread existing movie properties
         colorCount: colorCount, // Keep colorCount for sorting
         colorProportion: colorProportion, // Add the new colorProportion property
-      } as MoviePaletteDataWithColorCount; // Explicitly cast to the desired type
+      } as MovieColorPaletteData; // Explicitly cast to the desired type
       } catch (bitmapError) {
         console.error(`[${movie.id}] Error creating ImageBitmap:`, bitmapError);
         return null; // Return null if ImageBitmap creation fails
@@ -110,7 +110,7 @@ export async function findMoviesByMood(color: string): Promise<Record<string, Mo
 
   // Filter out movies where fetching/processing failed
   const filteredMoviesWithColor = moviesWithColorResults
-    .filter((movie): movie is MoviePaletteDataWithColorCount => movie !== null) // Remove null entries from failed fetches/processing and assert type
+    .filter((movie): movie is MovieColorPaletteData => movie !== null) // Remove null entries from failed fetches/processing and assert type
     .filter(movie => movie.colorProportion >= 0.2); // Apply the 20% threshold
 
   // Group movies by genre
@@ -132,7 +132,7 @@ export async function findMoviesByMood(color: string): Promise<Record<string, Mo
   }
   
   // Consolidate genre groups if they have identical movie lists
-  const consolidatedResults: Record<string, MoviePaletteDataWithColorCount[]> = {};
+  const consolidatedResults: Record<string, MovieColorPaletteData[]> = {};
   const genreKeys = Object.keys(resultsByGenre);
   const processedIndices: Set<number> = new Set();
 

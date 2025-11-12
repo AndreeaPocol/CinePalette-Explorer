@@ -11,14 +11,14 @@ import {
 } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
-import { getAllMoviePalettes, type MoviePaletteData } from '@/data/movie-palettes';
+import { getAllMoviePalettes, type MovieMetadata } from '@/data/movie-palettes';
 import { cn } from '@/lib/utils';
 
 interface MovieListDialogProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   handleMovieTitleClick: (movieName: string) => void;
-  movies: MoviePaletteData[];
+  movies: MovieMetadata[];
 }
 
 export const MovieListDialog: React.FC<MovieListDialogProps> = ({
