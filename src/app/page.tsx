@@ -1,5 +1,7 @@
 'use client';
 
+import munkres from 'munkres';
+import Color from 'colorjs.io';
 import path from 'path';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -26,9 +28,9 @@ import { findMoviesByMood } from '@/movie-mood-finder';
 import { MovieListDialog } from "@/components/movie-list-dialog";
 import RecommendationExplanationPanel from "@/components/recommendation-explanation-panel";
 import type { MoviePaletteDataWithColorCount } from '@/movie-mood-finder';
-import { findMostSimilarMovie } from '@/data/palette-comparison';
 
 
+type MoviePaletteDataWithId = MoviePaletteData & { id: string };
 
 export default function CinePaletteExplorer(): ReactElement {
   const [isFrameModalOpen, setIsFrameModalOpen] = useState<boolean>(false); // State to control the visibility of the frame modal
@@ -55,14 +57,14 @@ export default function CinePaletteExplorer(): ReactElement {
   const [explanationError, setExplanationError] = useState<string | null>(null); // State to track errors for explanations
   const [showBackToTop, setShowBackToTop] = useState(false);
 
-  const [topRecommendations, setTopRecommendations] = useState<{ movie: MoviePaletteData, micd: number }[]>([]);
+  const [topRecommendations, setTopRecommendations] = useState<{ movie: MoviePaletteDataWithId, micd: number }[]>([]);
   const [isLoadingRecommendation, setIsLoadingRecommendation] = useState<boolean>(false);
   const [recommendationError, setRecommendationError] = useState<string | null>(null);
-  const [detailedMICDExplanation, setDetailedMICDExplanation] = useState<any>(null); // Moved state declaration outside useCallback
 
   const [moodColor, setMoodColor] = useState<string>('');
   const [moodMovies, setMoodMovies] = useState<Record<string, MoviePaletteDataWithColorCount[]>>({});
   const [isLoadingMoodSearch, setIsLoadingMoodSearch] = useState<boolean>(false);
+  const [implementation, setImplementation] = useState<'hungarian' | 'micd' | 'weighted_micd' >('micd');
   const [noMoodResults, setNoMoodResults] = useState<boolean>(false);
 
   // --- Pagination State for Frames ---
@@ -97,17 +99,7 @@ export default function CinePaletteExplorer(): ReactElement {
           setError(null);
           resetState();
 
-          const fetchMostSimilarMovie = async () => {
-            setIsLoadingRecommendation(true);
-            setRecommendationError(null); // Clear previous error
-            setTopRecommendations([]); // Clear previous recommendations
-            const result = await findMostSimilarMovie(selectedMovieId);
-            setTopRecommendations(result.topRecommendations); 
-            setDetailedMICDExplanation(result.detailedMICDExplanation);
-            setRecommendationError(result.error);
-            setIsLoadingRecommendation(false);
-          }
-          fetchMostSimilarMovie();
+          findMostSimilarMovie();
         } 
         else {
           setSelectedMovieData(null);
@@ -137,23 +129,14 @@ export default function CinePaletteExplorer(): ReactElement {
     const movieData = getMoviePaletteById(trimmedInput); // getMoviePaletteById handles both ID and name
 
     if (movieData) {
-      setSelectedMovieId(trimmedInput);
+      // Reset states before setting new movie ID to trigger effects correctly
+      setSelectedMovieId('');
       setSelectedMovieData(null);
       setSelectedMoviePalettePath(null);
       setError(null);
       resetState();
 
-      const fetchMostSimilarMovie = async () => {
-        setIsLoadingRecommendation(true);
-        setRecommendationError(null); // Clear previous error
-        setTopRecommendations([]); // Clear previous recommendations
-        const result = await findMostSimilarMovie(selectedMovieId);
-        setTopRecommendations(result.topRecommendations); 
-        setDetailedMICDExplanation(result.detailedMICDExplanation);
-        setRecommendationError(result.error);
-        setIsLoadingRecommendation(false);
-      }
-      fetchMostSimilarMovie();
+      findMostSimilarMovie();
       
     } else {
       setError(`Movie "${trimmedInput}" not found in our data. Please check the ID or name and try again.`);
@@ -206,6 +189,303 @@ export default function CinePaletteExplorer(): ReactElement {
     setIsBrowsing(true);
     setError(null);
   };
+
+  const fetchPaletteColors = useCallback(async (movieId: string) => {
+    try {
+      const response = await fetch(`/api/palette-colors?movieId=${movieId}`);
+      if (!response.ok) {
+        throw new Error(`Error fetching palette colors: ${response.statusText}`);
+      }
+      const data = await response.json();
+      if (data.success && data.colors) {
+        return data.colors as { r: number; g: number; b: number, count: number }[];
+      } else {
+        throw new Error(data.error || 'Failed to fetch palette colors');
+      }
+    } catch (error) {
+      return null;
+    }
+  }, []);
+
+  // Define a unified return type for clarity
+  type MICDResult = {
+    micd: number, 
+    palette1To2: { color: any, closestInOtherPalette: any, deltaE: number, weight?: number }[],
+    palette2To1: { color: any, closestInOtherPalette: any, deltaE: number, weight?: number }[],
+    totalPixels1: number,
+    totalPixels2: number,
+    totalCost1: number, // Sum of costs (weighted or unweighted) for P1
+    totalCost2: number, // Sum of costs (weighted or unweighted) for P2
+  };
+
+  // Calculate Mean Inter-color Distance (MICD) between two palettes
+  const calculateMICD = useCallback((
+    colors1: { r: number; g: number; b: number, count: number }[], 
+    colors2: { r: number; g: number; b: number, count: number }[]
+  ): number | MICDResult => {
+    
+    const numColors1 = colors1.length;
+    const numColors2 = colors2.length;
+    
+    // Return Infinity if either palette is empty
+    if (!numColors1 || !numColors2) return Infinity;
+
+    const totalPixels1 = colors1.reduce((sum, color) => sum + color.count, 0);
+    const totalPixels2 = colors2.reduce((sum, color) => sum + color.count, 0);
+
+    // Helper function to calculate Delta E between two RGB colors (0-255)
+    const getDeltaE = (c1: { r: number; g: number; b: number }, c2: { r: number; g: number; b: number }): number => {
+        try {
+            const color1Obj = new Color("srgb", [c1.r / 255, c1.g / 255, c1.b / 255]).to("lab");
+            const color2Obj = new Color("srgb", [c2.r / 255, c2.g / 255, c2.b / 255]).to("lab");
+            const deltaE = color1Obj.deltaE2000(color2Obj);
+            return (deltaE !== undefined && !isNaN(deltaE)) ? deltaE : Infinity;
+        } catch (e) {
+            console.warn("Delta E calculation failed.", e);
+            return Infinity;
+        }
+    };
+    
+    // --- 1. Hungarian Algorithm (Optimal 1:1 Matching) ---
+    if (implementation === 'hungarian') {
+        const size = Math.max(numColors1, numColors2);
+        const costMatrix: number[][] = Array.from({ length: size }, () => Array(size).fill(Infinity));
+
+        // Fill in the Delta E cost matrix
+        for (let i = 0; i < numColors1; i++) { 
+            for (let j = 0; j < numColors2; j++) {
+                costMatrix[i][j] = getDeltaE(colors1[i], colors2[j]);
+            }
+        }
+
+        const result = munkres(costMatrix); 
+
+        // The result is an array of [row, col] pairs representing the optimal assignment
+        const matchedPairs: { color1Index: number; color2Index: number; deltaE: number }[] = result
+            .filter((pair: [number, number]) => pair[0] < numColors1 && pair[1] < numColors2) // Filter out padding
+            .map((pair: [number, number]) => {
+                const deltaE = costMatrix[pair[0]][pair[1]]; // Retrieve cost from the matrix
+                return {
+                    color1Index: pair[0],
+                    color2Index: pair[1],
+                    deltaE: deltaE,
+                };
+            });
+
+        const totalCostSum = matchedPairs.reduce((sum, pair) => sum + pair.deltaE, 0);
+
+        // MICD is the average deltaE of the matched pairs
+        const micd = matchedPairs.length > 0 ? totalCostSum / matchedPairs.length : Infinity;
+
+        // Create detailed mapping results (symmetrical mapping)
+        const detailedMapping = matchedPairs.map(pair => ({
+            color: colors1[pair.color1Index],
+            closestInOtherPalette: colors2[pair.color2Index],
+            deltaE: pair.deltaE,
+        }));
+        
+        // Total cost per color count in the original palettes
+        const totalCost1 = numColors1 > 0 ? totalCostSum / numColors1 : Infinity; 
+        const totalCost2 = numColors2 > 0 ? totalCostSum / numColors2 : Infinity; 
+
+        return {
+            micd: micd,
+            palette1To2: detailedMapping,
+            palette2To1: detailedMapping,
+            totalPixels1: totalPixels1,
+            totalPixels2: totalPixels2,
+            totalCost1: totalCost1,
+            totalCost2: totalCost2,
+        };
+    } 
+    
+    // --- 2. Simple MICD (Unweighted Mean of Minimum Distances) ---
+    else if (implementation === 'micd') {
+        let totalMinDeltaE1 = 0;
+        const palette1To2 = colors1.map(color1 => {
+            let minDeltaE = Infinity;
+            let closestColor2 = null;
+            for (const color2 of colors2) {
+                const deltaE = getDeltaE(color1, color2);
+                if (deltaE < minDeltaE) {
+                    minDeltaE = deltaE;
+                    closestColor2 = color2;
+                }
+            }
+            if (minDeltaE !== Infinity) { totalMinDeltaE1 += minDeltaE; }
+            return { color: color1, closestInOtherPalette: closestColor2, deltaE: minDeltaE };
+        });
+
+        let totalMinDeltaE2 = 0;
+        const palette2To1 = colors2.map(color2 => {
+            let minDeltaE = Infinity;
+            let closestColor1 = null;
+            for (const color1 of colors1) {
+                const deltaE = getDeltaE(color2, color1); 
+                if (deltaE < minDeltaE) {
+                    minDeltaE = deltaE;
+                    closestColor1 = color1;
+                }
+            }
+            if (minDeltaE !== Infinity) { totalMinDeltaE2 += minDeltaE; }
+            return { color: color2, closestInOtherPalette: closestColor1, deltaE: minDeltaE };
+        });
+
+        // Average minimum Delta E for each palette
+        const avgMinDeltaE1 = numColors1 > 0 ? totalMinDeltaE1 / numColors1 : Infinity;
+        const avgMinDeltaE2 = numColors2 > 0 ? totalMinDeltaE2 / numColors2 : Infinity;
+
+        // MICD is the average of the two directional averages
+        const micd = (avgMinDeltaE1 + avgMinDeltaE2) / 2;
+
+        return {
+            micd: micd,
+            palette1To2: palette1To2,
+            palette2To1: palette2To1,
+            totalPixels1: totalPixels1,
+            totalPixels2: totalPixels2,
+            totalCost1: totalMinDeltaE1,
+            totalCost2: totalMinDeltaE2,
+        };
+    }
+
+    // --- 3. Weighted MICD (Weighted Mean of Minimum Distances) ---
+    else if (implementation === 'weighted_micd') {
+        let weightedTotalDeltaE1 = 0;
+        let totalWeight1 = 0;
+        const palette1To2 = colors1.map(color1 => {
+            let minDeltaE = Infinity;
+            let closestColor2 = null;
+            for (const color2 of colors2) {
+                const deltaE = getDeltaE(color1, color2);
+                if (deltaE < minDeltaE) {
+                    minDeltaE = deltaE;
+                    closestColor2 = color2;
+                }
+            }
+            if (minDeltaE !== Infinity) {
+                weightedTotalDeltaE1 += minDeltaE * color1.count;
+                totalWeight1 += color1.count;
+            }
+            return { color: color1, closestInOtherPalette: closestColor2, deltaE: minDeltaE, weight: color1.count };
+        });
+
+        let weightedTotalDeltaE2 = 0;
+        let totalWeight2 = 0;
+        const palette2To1 = colors2.map(color2 => {
+            let minDeltaE = Infinity;
+            let closestColor1 = null;
+            for (const color1 of colors1) {
+                const deltaE = getDeltaE(color2, color1); 
+                if (deltaE < minDeltaE) {
+                    minDeltaE = deltaE;
+                    closestColor1 = color1;
+                }
+            }
+            if (minDeltaE !== Infinity) {
+                weightedTotalDeltaE2 += minDeltaE * color2.count;
+                totalWeight2 += color2.count;
+            }
+            return { color: color2, closestInOtherPalette: closestColor1, deltaE: minDeltaE, weight: color2.count };
+        });
+
+        // Weighted Average minimum Delta E for each palette
+        // Note: totalWeightX should equal totalPixelsX if all colors are valid.
+        const weightedAvgMinDeltaE1 = totalWeight1 > 0 ? weightedTotalDeltaE1 / totalWeight1 : Infinity;
+        const weightedAvgMinDeltaE2 = totalWeight2 > 0 ? weightedTotalDeltaE2 / totalWeight2 : Infinity;
+
+        // Weighted MICD is the average of the two directional weighted averages
+        const micd = (weightedAvgMinDeltaE1 + weightedAvgMinDeltaE2) / 2;
+
+        return {
+            micd: micd,
+            palette1To2: palette1To2,
+            palette2To1: palette2To1,
+            totalPixels1: totalPixels1,
+            totalPixels2: totalPixels2,
+            totalCost1: weightedTotalDeltaE1, // Total weighted cost
+            totalCost2: weightedTotalDeltaE2, // Total weighted cost
+        };
+    }
+    
+    // Fallback for unknown implementation type
+    console.error(`Unknown implementation method: ${implementation}`);
+    return Infinity;
+  }, [implementation]);
+
+  const [detailedMICDExplanation, setDetailedMICDExplanation] = useState<any>(null); // Moved state declaration outside useCallback
+  const findMostSimilarMovie = useCallback(async () => {
+    // Update state to store an array of recommendations
+    if (!selectedMovieId) {
+      setTopRecommendations([]);
+      setRecommendationError(null);
+      return;
+    }
+    setIsLoadingRecommendation(true);
+    setRecommendationError(null); // Clear previous error
+    setTopRecommendations([]); // Clear previous recommendations
+    try {
+      const selectedMovieColors = await fetchPaletteColors(selectedMovieId);
+      if (!selectedMovieColors) {
+        setRecommendationError('Could not fetch palette colors for the selected movie.');
+        setIsLoadingRecommendation(false);
+        return;
+      }
+
+      const similarityScores: { movie: MoviePaletteDataWithId, micd: number }[] = [];
+
+      for (const candidateMovie of allMovies) {
+        if (candidateMovie.id === selectedMovieId) continue; // Skip the selected movie itself
+
+        const candidateColors = await fetchPaletteColors(candidateMovie.id);
+        if (!candidateColors || candidateColors.length === 0) continue; // Skip if candidate colors can't be fetched or are empty
+
+        const micdResult = calculateMICD(selectedMovieColors, candidateColors);
+
+        // Ensure we are comparing numbers
+        const micd = typeof micdResult === 'number' ? micdResult : micdResult.micd;
+
+        // Store the similarity score and the movie
+        similarityScores.push({ movie: candidateMovie, micd: micd });
+      }
+
+      // Sort by MICD to find the top 3
+      similarityScores.sort((a, b) => a.micd - b.micd);
+
+      // Take the top 3
+      const topThreeRecommendations = similarityScores.slice(0, 3);
+      setTopRecommendations(topThreeRecommendations); // Set the state with the top 3
+
+      // Calculate and store detailed explanation for the *first* best match only
+      if (topThreeRecommendations.length > 0) {
+        // Fetch colors for the recommended movie to calculate detailed MICD
+        const recommendedMovieColors = await fetchPaletteColors(topThreeRecommendations[0].movie.id);
+        if (!recommendedMovieColors) {
+          console.error(`Failed to fetch colors for recommended movie: ${topThreeRecommendations[0].movie.name}`);
+          setDetailedMICDExplanation(null); // Clear detailed explanation if colors cannot be fetched
+        } else {
+          const detailedResult = calculateMICD(selectedMovieColors, recommendedMovieColors) as {
+            micd: number,
+            palette1To2: any[],
+            palette2To1: any[],
+            totalCost1: number,
+            totalCost2: number,
+          };
+          setTopRecommendations(topThreeRecommendations); // Set the first recommended movie for the main display
+          setDetailedMICDExplanation(detailedResult);
+        }
+      } else {
+        setTopRecommendations([]);
+        setDetailedMICDExplanation(null); // Clear detailed explanation if no recommendation found
+        setRecommendationError('No similar palette found.');
+      }
+    } catch (error) {
+      console.error("Error finding similar movie:", error);
+      setRecommendationError('An error occurred while finding a recommendation.');
+    } finally {
+      setIsLoadingRecommendation(false);
+    }
+  }, [selectedMovieId, fetchPaletteColors, calculateMICD]); // Depend on calculateMICD, not the version with details
 
   
   const fetchColorExplanation = useCallback(async (color: string) => {
@@ -480,6 +760,9 @@ export default function CinePaletteExplorer(): ReactElement {
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
+
+  // Extract unique genres from allMovies
+  const uniqueGenres = Array.from(new Set(allMovies.flatMap(movie => movie.genres || []))).sort();
 
   // Predefined list of colors for mood search
   const moodColors = ['Red', 'Orange', 'Yellow', 'Green', 'Cyan', 'Blue', 'Purple', 'Pink'];
@@ -1105,7 +1388,7 @@ export default function CinePaletteExplorer(): ReactElement {
     </div>
   );
 };
-const allMovies: MoviePaletteData[] = getAllMoviePalettes()
+const allMovies: MoviePaletteDataWithId[] = getAllMoviePalettes()
  .map(movie => ({
  ...movie,
  id: movie.id, // Ensure the id field is explicitly included
