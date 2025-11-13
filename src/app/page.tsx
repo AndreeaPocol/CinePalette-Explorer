@@ -28,7 +28,7 @@ import { findMoviesByMood } from '@/movie-mood-finder';
 import { MovieListDialog } from "@/components/movie-list-dialog";
 import RecommendationExplanationPanel from "@/components/recommendation-explanation-panel";
 import type { MovieColorPaletteData } from '@/movie-mood-finder';
-
+import { pLimit } from '@/lib/p-limit';
 
 export default function CinePaletteExplorer(): ReactElement {
   const [isFrameModalOpen, setIsFrameModalOpen] = useState<boolean>(false); // State to control the visibility of the frame modal
@@ -482,70 +482,91 @@ const calculateSimilarity = useCallback((
 }, [implementation]);
 
 const [detailedMICDExplanation, setDetailedMICDExplanation] = useState<any>(null); // Moved state declaration outside useCallback
+
 const findMostSimilarMovie = useCallback(async () => {
-  // Update state to store an array of recommendations
   if (!selectedMovieId) {
     setTopRecommendations([]);
     setRecommendationError(null);
     return;
   }
   setIsLoadingRecommendation(true);
-  setRecommendationError(null); // Clear previous error
-  setTopRecommendations([]); // Clear previous recommendations
+  setRecommendationError(null); 
+  setTopRecommendations([]); 
+  setDetailedMICDExplanation(null);
+
   try {
+    const candidateMovies = allMovies.filter(movie => movie.id !== selectedMovieId);
+    
+    // Initialize the concurrency limiter: Only allow 5 fetches at once.
+    const limit = pLimit(100); 
+
+    // ----------------------------------------------------
+    // PHASE 1: I/O Parallelization (Fetch ALL data with CONCURRENCY LIMIT)
+    // ----------------------------------------------------
+    
+    // 1. Fetch the selected movie's colors first (we need this quickly to start comparing)
     const selectedMovieColors = await fetchPaletteColors(selectedMovieId);
-    if (!selectedMovieColors) {
+
+    if (!selectedMovieColors || selectedMovieColors.length === 0) {
       setRecommendationError('Could not fetch palette colors for the selected movie.');
-      setIsLoadingRecommendation(false);
       return;
     }
 
-    const similarityScores: { movie: MovieMetadata, score: number }[] = [];
+    interface RecommendationResult {
+      movie: MovieMetadata; 
+      score: number; 
+      candidateColors: any; // Use actual Color type if available
+  }
 
-    for (const candidateMovie of allMovies) {
-      if (candidateMovie.id === selectedMovieId) continue; // Skip the selected movie itself
+    // 2. Prepare promises for all candidates, wrapped by the concurrency limiter
+    const similarityPromises = candidateMovies
+      .map(candidateMovie => {
+        // Wrap the async task in 'limit' to control when it runs.
+        return limit(async () => {
+          // Fetch colors for the candidate movie
+          const candidateColors = await fetchPaletteColors(candidateMovie.id);
+          
+          if (!candidateColors || candidateColors.length === 0) {
+            return null; // Skip if no colors
+          }
 
-      const candidateColors = await fetchPaletteColors(candidateMovie.id);
-      if (!candidateColors || candidateColors.length === 0) continue; // Skip if candidate colors can't be fetched or are empty
+          // Calculate similarity synchronously *after* the fetch is complete
+          const micdResult = calculateSimilarity(selectedMovieColors, candidateColors);
+          const score = typeof micdResult === 'number' ? micdResult : micdResult.score;
 
-      const micdResult = calculateSimilarity(selectedMovieColors, candidateColors);
+          return { 
+            movie: candidateMovie, 
+            score: score, 
+            candidateColors: candidateColors 
+          } as RecommendationResult;
+        });
+      });
 
-      // Ensure we are comparing numbers
-      const result = typeof micdResult === 'number' ? micdResult : micdResult.score;
+    // 3. Wait for all batches of limited-concurrency promises to resolve
+    const scoresAndCandidates = await Promise.all(similarityPromises);
 
-      // Store the similarity score and the movie
-      similarityScores.push({ movie: candidateMovie, score: result });
+    // ----------------------------------------------------
+    // PHASE 2 & 3: Filter, Sort, and Process Results
+    // ----------------------------------------------------
+
+    function isNonNull<T>(value: T | null): value is T {
+      return value !== null;
     }
+  
+    // 1. Filter out nulls and tell TypeScript the new array type
+    const similarityScores = scoresAndCandidates.filter(isNonNull);
+    const topThreeRecommendations = similarityScores.slice(0, 3) as RecommendationResult[];
+    setTopRecommendations(topThreeRecommendations as RecommendationResult[]); 
 
-    // Sort by MICD to find the top 3
-    similarityScores.sort((a, b) => a.score - b.score);
-
-    // Take the top 3
-    const topThreeRecommendations = similarityScores.slice(0, 3);
-    setTopRecommendations(topThreeRecommendations); // Set the state with the top 3
-
-    // Calculate and store detailed explanation for the *first* best match only
     if (topThreeRecommendations.length > 0) {
-      // Fetch colors for the recommended movie to calculate detailed MICD
-      const recommendedMovieColors = await fetchPaletteColors(topThreeRecommendations[0].movie.id);
-      if (!recommendedMovieColors) {
-        console.error(`Failed to fetch colors for recommended movie: ${topThreeRecommendations[0].movie.name}`);
-        setDetailedMICDExplanation(null); // Clear detailed explanation if colors cannot be fetched
-      } else {
-        const detailedResult = calculateSimilarity(selectedMovieColors, recommendedMovieColors) as {
-          score: number,
-          palette1To2: any[],
-          palette2To1: any[],
-          totalCost1: number,
-          totalCost2: number,
-        };
-        setTopRecommendations(topThreeRecommendations); // Set the first recommended movie for the main display
+        // Use the candidateColors already attached to the result object
+        const bestMatchCandidateColors = topThreeRecommendations[0].candidateColors;
+        
+        // Re-calculate the similarity to get the full MappingResult object
+        const detailedResult = calculateSimilarity(selectedMovieColors, bestMatchCandidateColors);
         setDetailedMICDExplanation(detailedResult);
-      }
     } else {
-      setTopRecommendations([]);
-      setDetailedMICDExplanation(null); // Clear detailed explanation if no recommendation found
-      setRecommendationError('No similar palette found.');
+        setRecommendationError('No similar palette found.');
     }
   } catch (error) {
     console.error("Error finding similar movie:", error);
@@ -553,8 +574,8 @@ const findMostSimilarMovie = useCallback(async () => {
   } finally {
     setIsLoadingRecommendation(false);
   }
-}, [selectedMovieId, fetchPaletteColors, calculateSimilarity]); // Depend on calculateSimilarity, not the version with details
-  
+}, [selectedMovieId, fetchPaletteColors, calculateSimilarity, allMovies]);
+
   const fetchColorExplanation = useCallback(async (color: string) => {
     if (!selectedMovieId || !selectedMovieData || !color) {
       console.error("ERROR: color is ${color} so no explanation will be fetched")
