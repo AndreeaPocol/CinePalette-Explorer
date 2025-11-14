@@ -30,6 +30,24 @@ import RecommendationExplanationPanel from "@/components/recommendation-explanat
 import type { MovieColorPaletteData } from '@/movie-mood-finder';
 import { pLimit } from '@/lib/p-limit';
 
+
+// Define a unified return type for clarity
+type MappingResult = {
+  score: number, 
+  palette1To2: { color: any, closestInOtherPalette: any, deltaE: number, weight?: number }[],
+  palette2To1: { color: any, closestInOtherPalette: any, deltaE: number, weight?: number }[],
+  totalPixels1: number,
+  totalPixels2: number,
+  totalCost1: number, // Sum of costs (weighted or unweighted) for P1
+  totalCost2: number, // Sum of costs (weighted or unweighted) for P2
+};
+
+interface RecommendationResult {
+  movie: MovieMetadata; 
+  mapping: MappingResult | number; 
+  score: number;
+}
+
 export default function CinePaletteExplorer(): ReactElement {
   const [isFrameModalOpen, setIsFrameModalOpen] = useState<boolean>(false); // State to control the visibility of the frame modal
   const [isOpen, setIsOpen] = useState<boolean>(false); // State to control the visibility of the movie list dialog
@@ -55,7 +73,7 @@ export default function CinePaletteExplorer(): ReactElement {
   const [explanationError, setExplanationError] = useState<string | null>(null); // State to track errors for explanations
   const [showBackToTop, setShowBackToTop] = useState(false);
 
-  const [topRecommendations, setTopRecommendations] = useState<{ movie: MovieMetadata, score: number }[]>([]);
+  const [topRecommendations, setTopRecommendations] = useState<RecommendationResult[]>([]);
   const [isLoadingRecommendation, setIsLoadingRecommendation] = useState<boolean>(false);
   const [recommendationError, setRecommendationError] = useState<string | null>(null);
 
@@ -177,22 +195,12 @@ export default function CinePaletteExplorer(): ReactElement {
     }
   }, []);
 
-// Define a unified return type for clarity
-type MappingResult = {
-  score: number, 
-  palette1To2: { color: any, closestInOtherPalette: any, deltaE: number, weight?: number }[],
-  palette2To1: { color: any, closestInOtherPalette: any, deltaE: number, weight?: number }[],
-  totalPixels1: number,
-  totalPixels2: number,
-  totalCost1: number, // Sum of costs (weighted or unweighted) for P1
-  totalCost2: number, // Sum of costs (weighted or unweighted) for P2
-};
+
 
 // Calculate (dis)similarity between two palettes
 const calculateSimilarity = useCallback((
   colors1: { r: number; g: number; b: number, count: number }[], 
   colors2: { r: number; g: number; b: number, count: number }[]
-  // NOTE: Assumes implementation, munkres, and Color are available in the scope/closure
 ): number | MappingResult => {
   
   const numColors1 = colors1.length;
@@ -220,19 +228,19 @@ const calculateSimilarity = useCallback((
   // --- 1. Weighted Hungarian Algorithm (Combined Cost) ---
   if (implementation === 'weighted_hungarian') {
       // Default weights for combined cost matrix (can be externalized if needed)
-      const WEIGHT_COLOR = 0.7; 
-      const WEIGHT_PROPORTION = 0.3; 
+      const WEIGHT_COLOR = 0.5; 
+      const WEIGHT_PROPORTION = 0.5; 
       const MAX_LAB_DIST_NORM = 100.0; // Typical max Delta E for normalization
       const UNMATCHED_PENALTY_PER_UNIT_PROPORTION = WEIGHT_PROPORTION;
 
       // Prepare colors with explicit proportion fields
       const colors1WithProps = colors1.map(c => ({
           ...c,
-          proportion: totalPixels1 > 0 ? c.count / totalPixels1 : 0
+          proportion: c.count / totalPixels1
       }));
       const colors2WithProps = colors2.map(c => ({
           ...c,
-          proportion: totalPixels2 > 0 ? c.count / totalPixels2 : 0
+          proportion: c.count / totalPixels2
       }));
 
       const n1 = numColors1;
@@ -240,79 +248,66 @@ const calculateSimilarity = useCallback((
       const size = Math.max(n1, n2);
 
       // Matrix 1: Combined Weighted Cost (used for optimal assignment)
-      const costMatrixCombined: number[][] = Array.from({ length: size }, () => Array(size).fill(0)); 
-      // Matrix 2: Unweighted Delta E Cost (used to retrieve Mapping data)
-      const costMatrixColor: number[][] = Array.from({ length: size }, () => Array(size).fill(Infinity)); 
+      const costMatrix: number[][] = Array.from({ length: size }, () => Array(size).fill(0)); 
 
       // Populate the cost matrices
       for (let i = 0; i < size; i++) {
           for (let j = 0; j < size; j++) {
-              
               if (i < n1 && j < n2) {
                   // Case 1: Real color to Real color match
                   const c1 = colors1WithProps[i];
                   const c2 = colors2WithProps[j];
                   const deltaE = getDeltaE(c1, c2);
-                  
-                  // Store unweighted Delta E for mapping result
-                  costMatrixColor[i][j] = deltaE;
 
                   // Calculate combined weighted cost for assignment
                   const colorDiffNorm = deltaE / MAX_LAB_DIST_NORM;
                   const proportionDiff = Math.abs(c1.proportion - c2.proportion);
 
-                  costMatrixCombined[i][j] = 
+                  costMatrix[i][j] = 
                       (colorDiffNorm * WEIGHT_COLOR) + 
                       (proportionDiff * WEIGHT_PROPORTION);
                       
               } else if (i < n1 && j >= n2) {
                   // Case 2: P1 color unmatched (matched with a dummy from P2)
                   const prop1 = colors1WithProps[i].proportion;
-                  costMatrixCombined[i][j] = prop1 * UNMATCHED_PENALTY_PER_UNIT_PROPORTION;
+                  costMatrix[i][j] = prop1 * UNMATCHED_PENALTY_PER_UNIT_PROPORTION;
               } else if (i >= n1 && j < n2) {
                   // Case 3: P2 color unmatched (matched with a dummy from P1)
                   const prop2 = colors2WithProps[j].proportion;
-                  costMatrixCombined[i][j] = prop2 * UNMATCHED_PENALTY_PER_UNIT_PROPORTION;
+                  costMatrix[i][j] = prop2 * UNMATCHED_PENALTY_PER_UNIT_PROPORTION;
               }
               // Case 4: Dummy-Dummy match (cost remains 0)
           }
       }
 
       // Find the optimal assignment using the combined weighted cost matrix
-      const assignmentPairs = munkres(costMatrixCombined); 
+      const assignmentPairs = munkres(costMatrix); 
 
       // Calculate final metrics based on the assignment
       let totalDissimilarity = 0;
       const matchedPairs: { color: any; closestInOtherPalette: any; deltaE: number; }[] = [];
 
       for (const [row, col] of assignmentPairs) {
+          // Retrieve Delta E from the matrix
+          const deltaE = costMatrix[row][col];
           // Sum the combined weighted cost for the total dissimilarity score
-          totalDissimilarity += costMatrixCombined[row][col];
-
-          // Only track real-to-real matches for the detailed mapping
-          if (row < n1 && col < n2) {
-              // Retrieve unweighted Delta E from the dedicated color matrix
-              const deltaE = costMatrixColor[row][col];
-              
-              matchedPairs.push({
-                  color: colors1[row],
-                  closestInOtherPalette: colors2[col],
-                  deltaE: deltaE,
-              });
-          }
+          totalDissimilarity += deltaE;
+          
+          matchedPairs.push({
+              color: colors1[row],
+              closestInOtherPalette: colors2[col],
+              deltaE: deltaE,
+          });
       }
 
-      // The final score is the total weighted dissimilarity
-      const finalScore = totalDissimilarity; 
-
       return {
-          score: finalScore,
+          score: totalDissimilarity,
           palette1To2: matchedPairs,
           palette2To1: matchedPairs, // Symmetrical mapping
           totalPixels1: totalPixels1,
           totalPixels2: totalPixels2,
-          totalCost1: finalScore, // Total dissimilarity (ranking score)
-          totalCost2: finalScore, // Total dissimilarity (ranking score)
+          totalCost1: totalDissimilarity, // Total dissimilarity (ranking score)
+          totalCost2: totalDissimilarity, // Total dissimilarity (ranking score)
       };
   // --- 2. Hungarian Algorithm (Optimal 1:1 Matching) ---
   } else if (implementation === 'hungarian') {
@@ -512,12 +507,6 @@ const findMostSimilarMovie = useCallback(async () => {
       return;
     }
 
-    interface RecommendationResult {
-      movie: MovieMetadata; 
-      score: number; 
-      candidateColors: any; // Use actual Color type if available
-  }
-
     // 2. Prepare promises for all candidates, wrapped by the concurrency limiter
     const similarityPromises = candidateMovies
       .map(candidateMovie => {
@@ -529,15 +518,12 @@ const findMostSimilarMovie = useCallback(async () => {
           if (!candidateColors || candidateColors.length === 0) {
             return null; // Skip if no colors
           }
-
+          const mapping = calculateSimilarity(selectedMovieColors, candidateColors) as MappingResult;
           // Calculate similarity synchronously *after* the fetch is complete
-          const micdResult = calculateSimilarity(selectedMovieColors, candidateColors);
-          const score = typeof micdResult === 'number' ? micdResult : micdResult.score;
-
-          return { 
-            movie: candidateMovie, 
-            score: score, 
-            candidateColors: candidateColors 
+          return {
+            movie: candidateMovie,
+            mapping: mapping,
+            score: mapping.score // needs to be directly accessible to JSX
           } as RecommendationResult;
         });
       });
@@ -555,16 +541,12 @@ const findMostSimilarMovie = useCallback(async () => {
   
     // 1. Filter out nulls and tell TypeScript the new array type
     const similarityScores = scoresAndCandidates.filter(isNonNull);
+    similarityScores.sort((a: any, b: any) => a.mapping.score - b.mapping.score);
     const topThreeRecommendations = similarityScores.slice(0, 3) as RecommendationResult[];
     setTopRecommendations(topThreeRecommendations as RecommendationResult[]); 
 
     if (topThreeRecommendations.length > 0) {
-        // Use the candidateColors already attached to the result object
-        const bestMatchCandidateColors = topThreeRecommendations[0].candidateColors;
-        
-        // Re-calculate the similarity to get the full MappingResult object
-        const detailedResult = calculateSimilarity(selectedMovieColors, bestMatchCandidateColors);
-        setDetailedMICDExplanation(detailedResult);
+        setDetailedMICDExplanation(topThreeRecommendations[0].mapping);
     } else {
         setRecommendationError('No similar palette found.');
     }
