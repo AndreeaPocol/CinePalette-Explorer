@@ -30,7 +30,7 @@ import { RecommendationExplanationPanel, type MappingResult, RecommendationResul
 import type { MovieColorPaletteData } from '@/movie-mood-finder';
 import { pLimit } from '@/lib/p-limit';
 import { PaletteService, ColorProportion } from '@/data/retrieve-palette';
-
+import { PaletteVisualizer } from '@/components/color-palette-visualizer';
 
 
 export default function CinePaletteExplorer(): ReactElement {
@@ -78,6 +78,8 @@ export default function CinePaletteExplorer(): ReactElement {
   const [isServiceReady, setIsServiceReady] = useState(false);
 
   const FRAME_PAGE_SIZE = 20;
+
+  const [showDetails, setShowDetails] = useState(false);
 
   const resetState = () => {
     setFrameErrors({});
@@ -215,8 +217,6 @@ export default function CinePaletteExplorer(): ReactElement {
     colors1: ColorProportion[], 
     colors2: ColorProportion[],
   ): null | MappingResult => {
-
-    console.log(colors1) // DEBUGGING... what does a short palette look like after filtering?
 
     const numColors1 = colors1.length;
     const numColors2 = colors2.length;
@@ -1032,7 +1032,7 @@ export default function CinePaletteExplorer(): ReactElement {
                         if (error) setError(null); // Clear error on input
                     }
                   }
-                  className="bg-transparent relative z-10 w-full px-3 py-2 pr-10" // Added bg-transparent, relative, z-10
+                  className="bg-transparent relative z-10 w-full px-3 py-2 pr-10"
                 />
                 <Button type="submit" aria-label="Load Movie Palette">
                   <Search className="mr-2 h-4 w-4" /> Load Palette
@@ -1332,13 +1332,42 @@ export default function CinePaletteExplorer(): ReactElement {
                         />
                       </div>
                   )}
+                  {/* === TOGGLE BUTTON AND DETAILS SECTION === */}
+                  <div className="mt-8 pt-4 border-t border-gray-200">                      
+                    <button
+                          onClick={() => setShowDetails(!showDetails)}
+                          className="flex items-center space-x-2 px-4 py-2 text-sm font-medium rounded-full text-white transition duration-150 shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2"
+                          aria-expanded={showDetails}
+                          aria-controls="palette-details"
+                      >
+                          {/* Icon that rotates when open */}
+                          <svg 
+                              className={`w-4 h-4 transition-transform duration-300 ${showDetails ? 'rotate-90' : 'rotate-0'}`} 
+                              xmlns="http://www.w3.org/2000/svg" 
+                              fill="none" 
+                              viewBox="0 0 24 24" 
+                              stroke="currentColor"
+                          >
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
+                          <span>{showDetails ? 'Hide Details' : 'Show Details'}</span>
+                      </button>
+                      
+                      {/* The conditionally rendered detail section */}
+                      {showDetails && (
+                        <div id="palette-details" className="mt-4 p-4 rounded-lg bg-card text-sm text-white border border-gray-200">
+                          <PaletteVisualizer 
+                              palette={paletteService.getPaletteByTconst(selectedMovieId)}
+                          />
+                        </div>
+                      )}
+                  </div>
                   {paletteImageError && (
                     <div className="mb-6 flex justify-center items-center p-4 bg-destructive/10 border border-destructive/50 text-destructive rounded-md text-sm">
                       <AlertCircle className="h-5 w-5 mr-2"/>
                       Could not load the color palette image.
                     </div>
                   )}
-                  
                   {/* Frames by Color Section */}
                   <Card className="mt-6  border border-border rounded-lg shadow-sm overflow-hidden">
                     <CardHeader className="p-4 border-b border-border ">
@@ -1509,7 +1538,9 @@ export default function CinePaletteExplorer(): ReactElement {
                     )}
                   </div> {/* End of Movie Recommendation Section */}
                 </CardContent>
+                
               </Card>
+              
             </>
           ) : null // Render nothing if error exists or browsing (components handle those states)
           }
