@@ -52,7 +52,7 @@ export const RecommendationExplanationPanel: React.FC<RecommendationExplanationP
 
       {explanationDetails && isExpanded && (
         <>
-          {explanationDetails === null || explanationDetails === undefined ? (
+          {explanationDetails.palette2To1 === null || explanationDetails.palette2To1 === undefined ? (
             console.error('palette1To2 is missing in explanationDetails')
           ) : (
             isExpanded && explanationDetails.palette1To2.length > 0 && (
@@ -101,6 +101,7 @@ export const RecommendationExplanationPanel: React.FC<RecommendationExplanationP
           )
             )
           )}
+          <hr className="my-4 border-gray-200" /> 
           {explanationDetails.palette2To1 === null || explanationDetails.palette2To1 === undefined ? (
             console.error('palette2To1 is missing in explanationDetails')
           ) : (
@@ -147,7 +148,6 @@ export const RecommendationExplanationPanel: React.FC<RecommendationExplanationP
               </Typography> */}
               </>
             )
-
           )}
         </>
       )}
