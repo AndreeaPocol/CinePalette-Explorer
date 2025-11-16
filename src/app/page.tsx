@@ -26,27 +26,12 @@ import type { TrailerFileApiOutput } from '@/app/api/trailer-file/route';
 import Link from "next/link";
 import { findMoviesByMood } from '@/movie-mood-finder';
 import { MovieListDialog } from "@/components/movie-list-dialog";
-import RecommendationExplanationPanel from "@/components/recommendation-explanation-panel";
+import { RecommendationExplanationPanel, type MappingResult, RecommendationResult } from "@/components/recommendation-explanation-panel";
 import type { MovieColorPaletteData } from '@/movie-mood-finder';
 import { pLimit } from '@/lib/p-limit';
+import { PaletteService, ColorProportion } from '@/data/retrieve-palette';
 
 
-// Define a unified return type for clarity
-type MappingResult = {
-  score: number, 
-  palette1To2: { color: any, closestInOtherPalette: any, deltaE: number, weight?: number }[],
-  palette2To1: { color: any, closestInOtherPalette: any, deltaE: number, weight?: number }[],
-  totalPixels1: number,
-  totalPixels2: number,
-  totalCost1: number, // Sum of costs (weighted or unweighted) for P1
-  totalCost2: number, // Sum of costs (weighted or unweighted) for P2
-};
-
-interface RecommendationResult {
-  movie: MovieMetadata; 
-  mapping: MappingResult | number; 
-  score: number;
-}
 
 export default function CinePaletteExplorer(): ReactElement {
   const [isFrameModalOpen, setIsFrameModalOpen] = useState<boolean>(false); // State to control the visibility of the frame modal
@@ -72,6 +57,7 @@ export default function CinePaletteExplorer(): ReactElement {
   const [isLoadingExplanation, setIsLoadingExplanation] = useState<boolean>(false);
   const [explanationError, setExplanationError] = useState<string | null>(null); // State to track errors for explanations
   const [showBackToTop, setShowBackToTop] = useState(false);
+  const [detailedMICDExplanation, setDetailedMICDExplanation] = useState<MappingResult | null >(null); // Moved state declaration outside useCallback
 
   const [topRecommendations, setTopRecommendations] = useState<RecommendationResult[]>([]);
   const [isLoadingRecommendation, setIsLoadingRecommendation] = useState<boolean>(false);
@@ -80,7 +66,7 @@ export default function CinePaletteExplorer(): ReactElement {
   const [moodColor, setMoodColor] = useState<string>('');
   const [moodMovies, setMoodMovies] = useState<Record<string, MovieColorPaletteData[]>>({});
   const [isLoadingMoodSearch, setIsLoadingMoodSearch] = useState<boolean>(false);
-  const [implementation, setImplementation] = useState<'hungarian' | 'micd' | 'weighted_micd' | 'weighted_hungarian'>('weighted_hungarian');
+  const [implementation, setImplementation] = useState<'hungarian' | 'micd' | 'weighted_micd' | 'weighted_hungarian'>('weighted_micd'); // Hungarian doesn't work for palettes of different lengths
   const [noMoodResults, setNoMoodResults] = useState<boolean>(false);
 
   // --- Pagination State for Frames ---
@@ -88,6 +74,8 @@ export default function CinePaletteExplorer(): ReactElement {
   const [isLoadingMoreFrames, setIsLoadingMoreFrames] = useState(false);
   const [hasMoreFrames, setHasMoreFrames] = useState(false);
   const [currentFramePage, setCurrentFramePage] = useState(0);
+
+  const [isServiceReady, setIsServiceReady] = useState(false);
 
   const FRAME_PAGE_SIZE = 20;
 
@@ -102,6 +90,26 @@ export default function CinePaletteExplorer(): ReactElement {
     setIsLoadingMoreFrames(false);
     setIsLoadingExplanation(false);
   }
+
+  useEffect(() => {
+    const initializeService = async () => {
+        try {
+            console.log('Attempting to load essential data...');
+            
+            // This is where the AWAIT must happen. It is outside of the render cycle.
+            await paletteService.loadPalettes();
+            
+            // Once the promise resolves, we signal to the component that synchronous lookups are safe.
+            setIsServiceReady(true);
+            console.log('Data service initialized and ready!');
+        } catch (error) {
+            console.log('Error: Failed to initialize service data.');
+            console.error("Initialization Error:", error);
+        }
+    };
+  
+    initializeService();
+  }, []); // Empty dependency array means it runs only once on mount.
 
   // FAST Local Movie Data Loading
   useEffect(() => {
@@ -178,385 +186,437 @@ export default function CinePaletteExplorer(): ReactElement {
     setError(null);
   };
 
-  const fetchPaletteColors = useCallback(async (movieId: string) => {
+  const fetchPaletteColors = useCallback((
+    movieId: string
+  ): ColorProportion[] => {
+    // CRITICAL GUARD: Do not attempt to read data if the service is not ready.
+    if (!isServiceReady) {
+        console.error("Attempted fetch before service ready. Aborting.");
+        // If the user tries to change the movie before data is loaded, we ignore the request.
+        return []; 
+    }
     try {
-      const response = await fetch(`/api/palette-colors?movieId=${movieId}`);
-      if (!response.ok) {
-        throw new Error(`Error fetching palette colors: ${response.statusText}`);
-      }
-      const data = await response.json();
-      if (data.success && data.colors) {
-        return data.colors as { r: number; g: number; b: number, count: number }[];
-      } else {
-        throw new Error(data.error || 'Failed to fetch palette colors');
-      }
+        // This synchronous call is now guaranteed to succeed because the guard check passed.
+        const colors : ColorProportion[] = paletteService.getPaletteByTconst(movieId);
+        if (colors.length === 0) {
+          throw new Error(`Empty list of colors returned by getPaletteByTconst for ${movieId}`)
+        }
+        console.log(`Successfully loaded palette for ${allMovies.find(m => m.id === movieId)?.name || 'movie'}.`);
+        return colors;
     } catch (error) {
+        console.error("Fetch Error (Should not happen if isServiceReady is true):", error);
+        return [];
+    }
+  }, [isServiceReady]); // Depends on readiness state
+
+
+  // Calculate (dis)similarity between two palettes
+  const calculateSimilarity = useCallback((
+    colors1: ColorProportion[], 
+    colors2: ColorProportion[],
+  ): null | MappingResult => {
+
+    console.log(colors1) // DEBUGGING... what does a short palette look like after filtering?
+
+    const numColors1 = colors1.length;
+    const numColors2 = colors2.length;
+    
+    // Return null if either palette is empty
+    if (!numColors1 || !numColors2) {
+      console.error(`Cannot calculate similarity; numColors1 (${numColors1}) or numColors2 (${numColors2}) is 0.`);
       return null;
     }
-  }, []);
 
+    // Helper function to calculate Delta E between two RGB colors (0-255)
+    const getDeltaE = (
+      c1: ColorProportion, 
+      c2: ColorProportion
+    ): number | null => {
+        try {
+            const color1Obj = new Color("srgb", [c1.r / 255, c1.g / 255, c1.b / 255]).to("lab");
+            const color2Obj = new Color("srgb", [c2.r / 255, c2.g / 255, c2.b / 255]).to("lab");
+            const deltaE = color1Obj.deltaE2000(color2Obj);
+            return (deltaE !== undefined && !isNaN(deltaE)) ? deltaE : Infinity;
+        } catch (e) {
+            console.warn("Delta E calculation failed.", e);
+            return null;
+        }
+    };
 
-
-// Calculate (dis)similarity between two palettes
-const calculateSimilarity = useCallback((
-  colors1: { r: number; g: number; b: number, count: number }[], 
-  colors2: { r: number; g: number; b: number, count: number }[]
-): number | MappingResult => {
-  
-  const numColors1 = colors1.length;
-  const numColors2 = colors2.length;
-  
-  // Return Infinity if either palette is empty
-  if (!numColors1 || !numColors2) return Infinity;
-
-  const totalPixels1 = colors1.reduce((sum, color) => sum + color.count, 0);
-  const totalPixels2 = colors2.reduce((sum, color) => sum + color.count, 0);
-
-  // Helper function to calculate Delta E between two RGB colors (0-255)
-  const getDeltaE = (c1: { r: number; g: number; b: number }, c2: { r: number; g: number; b: number }): number => {
+    const getEuclideanLabDistance = (
+      c1: ColorProportion, 
+      c2: ColorProportion,
+    ): number | null => {
       try {
-          const color1Obj = new Color("srgb", [c1.r / 255, c1.g / 255, c1.b / 255]).to("lab");
-          const color2Obj = new Color("srgb", [c2.r / 255, c2.g / 255, c2.b / 255]).to("lab");
-          const deltaE = color1Obj.deltaE2000(color2Obj);
-          return (deltaE !== undefined && !isNaN(deltaE)) ? deltaE : Infinity;
+          // 1. Convert RGB (0-255) to sRGB (0-1) and then to LAB space.
+          // The .coords property of the LAB color object typically holds [L, a, b].
+          
+          // This line depends on the specific Color library being used:
+          // Assuming the Color class is globally available for context.
+          const color1Lab = new Color("srgb", [c1.r / 255, c1.g / 255, c1.b / 255]).to("lab");
+          const color2Lab = new Color("srgb", [c2.r / 255, c2.g / 255, c2.b / 255]).to("lab");
+
+          const [L1, a1, b1] = color1Lab.coords as [number, number, number];
+          const [L2, a2, b2] = color2Lab.coords as [number, number, number];
+
+          // 2. Calculate the squared differences for L, a, and b
+          const dL = L2 - L1;
+          const da = a2 - a1;
+          const db = b2 - b1;
+
+          // 3. Compute the Euclidean distance (square root of the sum of squared differences)
+          // D = sqrt( dL^2 + da^2 + db^2 )
+          const distance = Math.sqrt(
+              Math.pow(dL, 2) + Math.pow(da, 2) + Math.pow(db, 2)
+          );
+
+          // Check if the result is valid
+          return (!isNaN(distance) && isFinite(distance)) ? distance : Infinity;
+
       } catch (e) {
-          console.warn("Delta E calculation failed.", e);
-          return Infinity;
+          // Log a warning if the color conversion or calculation fails
+          console.error("Euclidean LAB distance calculation failed.", e);
+          return null;
       }
-  };
-  
-  // --- 1. Weighted Hungarian Algorithm (Combined Cost) ---
-  if (implementation === 'weighted_hungarian') {
-      // Default weights for combined cost matrix (can be externalized if needed)
-      const WEIGHT_COLOR = 0.5; 
-      const WEIGHT_PROPORTION = 0.5; 
-      const MAX_LAB_DIST_NORM = 100.0; // Typical max Delta E for normalization
-      const UNMATCHED_PENALTY_PER_UNIT_PROPORTION = WEIGHT_PROPORTION;
+    };
+    
+    // --- 1. Weighted Hungarian Algorithm (Combined Cost) ---
+    if (implementation === 'weighted_hungarian') {
+        // Default weights for combined cost matrix (can be externalized if needed)
+        const WEIGHT_COLOR = 0.6; 
+        const WEIGHT_PROPORTION = 0.4; 
+        // using 100 as the maximum to normalize the raw Delta E scores (which ranges from 0 to ~100) down to a value between 0 and 1. 
+        // This normalization is critical because it ensures that when we calculate the combined cost
+        // Cost = Normalized Delta E * 0.5 + Proportion Difference * 0.5
+        // The two components are weighted on a similar scale (0 to 1), preventing the Delta E component from overwhelming the proportion component.
 
-      // Prepare colors with explicit proportion fields
-      const colors1WithProps = colors1.map(c => ({
-          ...c,
-          proportion: c.count / totalPixels1
-      }));
-      const colors2WithProps = colors2.map(c => ({
-          ...c,
-          proportion: c.count / totalPixels2
-      }));
+        const MAX_LAB_DIST_NORM = 100.0; // Typical max Delta E for normalization
+        const UNMATCHED_PENALTY_PER_UNIT_PROPORTION = WEIGHT_PROPORTION;
 
-      const n1 = numColors1;
-      const n2 = numColors2;
-      const size = Math.max(n1, n2);
+        // Populate the cost matrix
+        const n1 = numColors1;
+        const n2 = numColors2;
+        const size = Math.max(n1, n2);
 
-      // Matrix 1: Combined Weighted Cost (used for optimal assignment)
-      const costMatrix: number[][] = Array.from({ length: size }, () => Array(size).fill(0)); 
-
-      // Populate the cost matrices
-      for (let i = 0; i < size; i++) {
-          for (let j = 0; j < size; j++) {
+        // Combined Weighted Cost (used for optimal assignment)
+        const costMatrix: number[][] = Array.from({ length: size }, () => Array(size).fill(Infinity));
+        for (let i = 0; i < size; i++) {
+            for (let j = 0; j < size; j++) {
               if (i < n1 && j < n2) {
-                  // Case 1: Real color to Real color match
-                  const c1 = colors1WithProps[i];
-                  const c2 = colors2WithProps[j];
-                  const deltaE = getDeltaE(c1, c2);
+                // Case 1: Real color to Real color match
+                const c1 = colors1[i];
+                const c2 = colors2[j];
+                const deltaE = getEuclideanLabDistance(colors1[i], colors2[j]);
+                if (deltaE === null) {
+                  console.error("Stopping comparison logic because deltaE is null.");
+                  return null;
+                }
 
-                  // Calculate combined weighted cost for assignment
-                  const colorDiffNorm = deltaE / MAX_LAB_DIST_NORM;
-                  const proportionDiff = Math.abs(c1.proportion - c2.proportion);
+                // Calculate combined weighted cost for assignment
+                const colorDiffNorm = deltaE / MAX_LAB_DIST_NORM;
+                const proportionDiff = Math.abs(c1.proportion - c2.proportion);
 
-                  costMatrix[i][j] = 
-                      (colorDiffNorm * WEIGHT_COLOR) + 
-                      (proportionDiff * WEIGHT_PROPORTION);
+                costMatrix[i][j] = 
+                    (colorDiffNorm * WEIGHT_COLOR) + 
+                    (proportionDiff * WEIGHT_PROPORTION);
                       
               } else if (i < n1 && j >= n2) {
                   // Case 2: P1 color unmatched (matched with a dummy from P2)
-                  const prop1 = colors1WithProps[i].proportion;
-                  costMatrix[i][j] = prop1 * UNMATCHED_PENALTY_PER_UNIT_PROPORTION;
+                  costMatrix[i][j] = colors1[i].proportion * UNMATCHED_PENALTY_PER_UNIT_PROPORTION;
               } else if (i >= n1 && j < n2) {
                   // Case 3: P2 color unmatched (matched with a dummy from P1)
-                  const prop2 = colors2WithProps[j].proportion;
-                  costMatrix[i][j] = prop2 * UNMATCHED_PENALTY_PER_UNIT_PROPORTION;
+                  costMatrix[i][j] = colors2[j].proportion * UNMATCHED_PENALTY_PER_UNIT_PROPORTION;
               }
               // Case 4: Dummy-Dummy match (cost remains 0)
+            }
+        }
+
+        // Find the optimal assignment using the combined weighted cost matrix
+        const assignmentPairs = munkres(costMatrix); 
+
+        // Calculate final metrics based on the assignment
+        let totalDissimilarity = 0;
+        const matchedPairs: { color: any; closestInOtherPalette: any; difference: number; }[] = [];
+
+        for (const [row, col] of assignmentPairs) {
+          if ((row >= n1) || (col >= n2)) { // this was a dummy colour and will screw up the mapping later on if we don't omit it
+            continue
           }
-      }
-
-      // Find the optimal assignment using the combined weighted cost matrix
-      const assignmentPairs = munkres(costMatrix); 
-
-      // Calculate final metrics based on the assignment
-      let totalDissimilarity = 0;
-      const matchedPairs: { color: any; closestInOtherPalette: any; deltaE: number; }[] = [];
-
-      for (const [row, col] of assignmentPairs) {
-          // Retrieve Delta E from the matrix
-          const deltaE = costMatrix[row][col];
+          // Retrieve cost from the matrix
+          const cost = costMatrix[row][col];
           // Sum the combined weighted cost for the total dissimilarity score
-          totalDissimilarity += deltaE;
+          totalDissimilarity += cost;
           
           matchedPairs.push({
               color: colors1[row],
               closestInOtherPalette: colors2[col],
-              deltaE: deltaE,
+              difference: cost,
           });
-      }
+        }
 
-      return {
-          score: totalDissimilarity,
-          palette1To2: matchedPairs,
-          palette2To1: matchedPairs, // Symmetrical mapping
-          totalPixels1: totalPixels1,
-          totalPixels2: totalPixels2,
-          totalCost1: totalDissimilarity, // Total dissimilarity (ranking score)
-          totalCost2: totalDissimilarity, // Total dissimilarity (ranking score)
-      };
-  // --- 2. Hungarian Algorithm (Optimal 1:1 Matching) ---
-  } else if (implementation === 'hungarian') {
-      const size = Math.max(numColors1, numColors2);
-      const costMatrix: number[][] = Array.from({ length: size }, () => Array(size).fill(Infinity));
+        return {
+            score: totalDissimilarity,
+            palette1To2: matchedPairs,
+            palette2To1: matchedPairs, // Symmetrical mapping
+            totalCost1: totalDissimilarity, // Total dissimilarity (ranking score)
+            totalCost2: totalDissimilarity, // Total dissimilarity (ranking score)
+        } as MappingResult;
+    // --- 2. Hungarian Algorithm (Optimal 1:1 Matching) ---
+    } else if (implementation === 'hungarian') {
+        const size = Math.max(numColors1, numColors2);
+        const costMatrix: number[][] = Array.from({ length: size }, () => Array(size).fill(Infinity));
 
-      // Fill in the Delta E cost matrix
-      for (let i = 0; i < numColors1; i++) { 
-          for (let j = 0; j < numColors2; j++) {
-              costMatrix[i][j] = getDeltaE(colors1[i], colors2[j]);
-          }
-      }
+        // Fill in the Delta E cost matrix
+        for (let i = 0; i < numColors1; i++) { 
+            for (let j = 0; j < numColors2; j++) {
+              const result = getDeltaE(colors1[i], colors2[j]);
+              if (result === null) {
+                console.error("Stopping comparison logic because deltaE is null.");
+                return null;
+              }
+              costMatrix[i][j] = result;
+            }
+        }
 
-      const result = munkres(costMatrix); 
+        const result = munkres(costMatrix); 
 
-      // The result is an array of [row, col] pairs representing the optimal assignment
-      const matchedPairs: { color1Index: number; color2Index: number; deltaE: number }[] = result
-          .filter((pair: [number, number]) => pair[0] < numColors1 && pair[1] < numColors2) // Filter out padding
-          .map((pair: [number, number]) => {
-              const deltaE = costMatrix[pair[0]][pair[1]]; // Retrieve cost from the matrix
-              return {
-                  color1Index: pair[0],
-                  color2Index: pair[1],
-                  deltaE: deltaE,
-              };
-          });
+        // The result is an array of [row, col] pairs representing the optimal assignment
+        const matchedPairs: { color1Index: number; color2Index: number; difference: number }[] = result
+            .filter((pair: [number, number]) => pair[0] < numColors1 && pair[1] < numColors2) // Filter out padding
+            .map((pair: [number, number]) => {
+                const deltaE = costMatrix[pair[0]][pair[1]]; // Retrieve cost from the matrix
+                return {
+                    color1Index: pair[0],
+                    color2Index: pair[1],
+                    difference: deltaE,
+                };
+            });
 
-      const totalCostSum = matchedPairs.reduce((sum, pair) => sum + pair.deltaE, 0);
+        const totalCostSum = matchedPairs.reduce((sum, pair) => sum + pair.difference, 0);
 
-      // MICD is the average deltaE of the matched pairs
-      const score = matchedPairs.length > 0 ? totalCostSum / matchedPairs.length : Infinity;
+        // score is the average deltaE of the matched pairs
+        const score = matchedPairs.length > 0 ? totalCostSum / matchedPairs.length : Infinity;
 
-      // Create detailed mapping results (symmetrical mapping)
-      const detailedMapping = matchedPairs.map(pair => ({
-          color: colors1[pair.color1Index],
-          closestInOtherPalette: colors2[pair.color2Index],
-          deltaE: pair.deltaE,
-      }));
-      
-      // Total cost per color count in the original palettes
-      const totalCost1 = numColors1 > 0 ? totalCostSum / numColors1 : Infinity; 
-      const totalCost2 = numColors2 > 0 ? totalCostSum / numColors2 : Infinity; 
+        // Create detailed mapping results (symmetrical mapping)
+        const detailedMapping = matchedPairs.map(pair => ({
+            color: colors1[pair.color1Index],
+            closestInOtherPalette: colors2[pair.color2Index],
+            difference: pair.difference,
+        }));
+        
+        // Total cost per color count in the original palettes
+        const totalCost1 = numColors1 > 0 ? totalCostSum / numColors1 : Infinity; 
+        const totalCost2 = numColors2 > 0 ? totalCostSum / numColors2 : Infinity; 
 
-      return {
-          score: score,
-          palette1To2: detailedMapping,
-          palette2To1: detailedMapping,
-          totalPixels1: totalPixels1,
-          totalPixels2: totalPixels2,
-          totalCost1: totalCost1,
-          totalCost2: totalCost2,
-      };
-  } 
-  
-  // --- 3. Simple MICD (Unweighted Mean of Minimum Distances) ---
-  else if (implementation === 'micd') {
-      let totalMinDeltaE1 = 0;
-      const palette1To2 = colors1.map(color1 => {
-          let minDeltaE = Infinity;
-          let closestColor2 = null;
-          for (const color2 of colors2) {
-              const deltaE = getDeltaE(color1, color2);
-              if (deltaE < minDeltaE) {
-                  minDeltaE = deltaE;
+        return {
+            score: score,
+            palette1To2: detailedMapping,
+            palette2To1: detailedMapping,
+            totalCost1: totalCost1,
+            totalCost2: totalCost2,
+        };
+    } 
+    
+    // --- 3. Simple MICD (Unweighted Mean of Minimum Distances) ---
+    else if (implementation === 'micd') {
+        let totalMinDeltaE1 = 0;
+        const palette1To2 = colors1.map(color1 => {
+            let minDeltaE = Infinity;
+            let closestColor2 = null;
+            for (const color2 of colors2) {
+              const result = getDeltaE(color1, color2);
+              if (result === null) {
+                console.error("Stopping comparison logic because deltaE is null.");
+                return null;
+              }
+              if (result < minDeltaE) {
+                  minDeltaE = result;
                   closestColor2 = color2;
               }
-          }
-          if (minDeltaE !== Infinity) { totalMinDeltaE1 += minDeltaE; }
-          return { color: color1, closestInOtherPalette: closestColor2, deltaE: minDeltaE };
-      });
+            }
+            if (minDeltaE !== Infinity) { totalMinDeltaE1 += minDeltaE; }
+            return { color: color1, closestInOtherPalette: closestColor2, difference: minDeltaE };
+        });
 
-      let totalMinDeltaE2 = 0;
-      const palette2To1 = colors2.map(color2 => {
-          let minDeltaE = Infinity;
-          let closestColor1 = null;
-          for (const color1 of colors1) {
-              const deltaE = getDeltaE(color2, color1); 
-              if (deltaE < minDeltaE) {
-                  minDeltaE = deltaE;
-                  closestColor1 = color1;
-              }
-          }
-          if (minDeltaE !== Infinity) { totalMinDeltaE2 += minDeltaE; }
-          return { color: color2, closestInOtherPalette: closestColor1, deltaE: minDeltaE };
-      });
+        let totalMinDeltaE2 = 0;
+        const palette2To1 = colors2.map(color2 => {
+            let minDeltaE = Infinity;
+            let closestColor1 = null;
+            for (const color1 of colors1) {
+                const result = getDeltaE(color2, color1); 
+                if (result === null) {
+                  console.error("Stopping comparison logic because deltaE is null.");
+                  return null;
+                }
+                if (result < minDeltaE) {
+                    minDeltaE = result;
+                    closestColor1 = color1;
+                }
+            }
+            if (minDeltaE !== Infinity) { totalMinDeltaE2 += minDeltaE; }
+            return { color: color2, closestInOtherPalette: closestColor1, difference: minDeltaE };
+        });
 
-      // Average minimum Delta E for each palette
-      const avgMinDeltaE1 = numColors1 > 0 ? totalMinDeltaE1 / numColors1 : Infinity;
-      const avgMinDeltaE2 = numColors2 > 0 ? totalMinDeltaE2 / numColors2 : Infinity;
+        // Average minimum Delta E for each palette
+        const avgMinDeltaE1 = numColors1 > 0 ? totalMinDeltaE1 / numColors1 : Infinity;
+        const avgMinDeltaE2 = numColors2 > 0 ? totalMinDeltaE2 / numColors2 : Infinity;
 
-      // MICD is the average of the two directional averages
-      const micd = (avgMinDeltaE1 + avgMinDeltaE2) / 2;
+        // MICD is the average of the two directional averages
+        const micd = (avgMinDeltaE1 + avgMinDeltaE2) / 2;
 
-      return {
-          score: micd,
-          palette1To2: palette1To2,
-          palette2To1: palette2To1,
-          totalPixels1: totalPixels1,
-          totalPixels2: totalPixels2,
-          totalCost1: totalMinDeltaE1,
-          totalCost2: totalMinDeltaE2,
-      };
-  }
+        return {
+            score: micd,
+            palette1To2: palette1To2,
+            palette2To1: palette2To1,
+            totalCost1: totalMinDeltaE1,
+            totalCost2: totalMinDeltaE2,
+        } as MappingResult;
+    }
 
-  // --- 4. Weighted MICD (Weighted Mean of Minimum Distances) ---
-  else if (implementation === 'weighted_micd') {
-      let weightedTotalDeltaE1 = 0;
-      let totalWeight1 = 0;
-      const palette1To2 = colors1.map(color1 => {
-          let minDeltaE = Infinity;
-          let closestColor2 = null;
-          for (const color2 of colors2) {
-              const deltaE = getDeltaE(color1, color2);
-              if (deltaE < minDeltaE) {
-                  minDeltaE = deltaE;
-                  closestColor2 = color2;
-              }
-          }
-          if (minDeltaE !== Infinity) {
-              weightedTotalDeltaE1 += minDeltaE * color1.count;
-              totalWeight1 += color1.count;
-          }
-          return { color: color1, closestInOtherPalette: closestColor2, deltaE: minDeltaE, weight: color1.count };
-      });
+    // --- 4. Weighted MICD (Weighted Mean of Minimum Distances) ---
+    else if (implementation === 'weighted_micd') {
+        let weightedTotalDeltaE1 = 0;
+        let totalWeight1 = 0;
+        const palette1To2 = colors1.map(color1 => {
+            let minDeltaE = Infinity;
+            let closestColor2 = null;
+            for (const color2 of colors2) {
+                const result = getDeltaE(color1, color2);
+                if (result === null) {
+                  console.error("Stopping comparison logic because deltaE is null.");
+                  return null;
+                }
+                if (result < minDeltaE) {
+                    minDeltaE = result;
+                    closestColor2 = color2;
+                }
+            }
+            if (minDeltaE !== Infinity) {
+                weightedTotalDeltaE1 += minDeltaE * color1.proportion;
+                totalWeight1 += color1.proportion;
+            }
+            return { color: color1, closestInOtherPalette: closestColor2, difference: minDeltaE, weight: color1.proportion };
+        });
 
-      let weightedTotalDeltaE2 = 0;
-      let totalWeight2 = 0;
-      const palette2To1 = colors2.map(color2 => {
-          let minDeltaE = Infinity;
-          let closestColor1 = null;
-          for (const color1 of colors1) {
-              const deltaE = getDeltaE(color2, color1); 
-              if (deltaE < minDeltaE) {
-                  minDeltaE = deltaE;
-                  closestColor1 = color1;
-              }
-          }
-          if (minDeltaE !== Infinity) {
-              weightedTotalDeltaE2 += minDeltaE * color2.count;
-              totalWeight2 += color2.count;
-          }
-          return { color: color2, closestInOtherPalette: closestColor1, deltaE: minDeltaE, weight: color2.count };
-      });
+        let weightedTotalDeltaE2 = 0;
+        let totalWeight2 = 0;
+        const palette2To1 = colors2.map(color2 => {
+            let minDeltaE = Infinity;
+            let closestColor1 = null;
+            for (const color1 of colors1) {
+                const result = getDeltaE(color2, color1); 
+                if (result === null) {
+                  console.error("Stopping comparison logic because deltaE is null.");
+                  return null;
+                }
+                if (result < minDeltaE) {
+                    minDeltaE = result;
+                    closestColor1 = color1;
+                }
+            }
+            if (minDeltaE !== Infinity) {
+                weightedTotalDeltaE2 += minDeltaE * color2.proportion;
+                totalWeight2 += color2.proportion;
+            }
+            return { color: color2, closestInOtherPalette: closestColor1, difference: minDeltaE, weight: color2.proportion };
+        });
 
-      // Weighted Average minimum Delta E for each palette
-      // Note: totalWeightX should equal totalPixelsX if all colors are valid.
-      const weightedAvgMinDeltaE1 = totalWeight1 > 0 ? weightedTotalDeltaE1 / totalWeight1 : Infinity;
-      const weightedAvgMinDeltaE2 = totalWeight2 > 0 ? weightedTotalDeltaE2 / totalWeight2 : Infinity;
+        // Weighted Average minimum Delta E for each palette
+        // Note: totalWeightX should equal totalPixelsX if all colors are valid.
+        const weightedAvgMinDeltaE1 = totalWeight1 > 0 ? weightedTotalDeltaE1 / totalWeight1 : Infinity;
+        const weightedAvgMinDeltaE2 = totalWeight2 > 0 ? weightedTotalDeltaE2 / totalWeight2 : Infinity;
 
-      // Weighted MICD is the average of the two directional weighted averages
-      const micd = (weightedAvgMinDeltaE1 + weightedAvgMinDeltaE2) / 2;
+        // Weighted MICD is the average of the two directional weighted averages
+        const micd = (weightedAvgMinDeltaE1 + weightedAvgMinDeltaE2) / 2;
 
-      return {
-          score: micd,
-          palette1To2: palette1To2,
-          palette2To1: palette2To1,
-          totalPixels1: totalPixels1,
-          totalPixels2: totalPixels2,
-          totalCost1: weightedTotalDeltaE1, // Total weighted cost
-          totalCost2: weightedTotalDeltaE2, // Total weighted cost
-      };
-  }
-  
-  // Fallback for unknown implementation type
-  console.error(`Unknown implementation method: ${implementation}`);
-  return Infinity;
-}, [implementation]);
-
-const [detailedMICDExplanation, setDetailedMICDExplanation] = useState<any>(null); // Moved state declaration outside useCallback
-
-const findMostSimilarMovie = useCallback(async () => {
-  if (!selectedMovieId) {
-    setTopRecommendations([]);
-    setRecommendationError(null);
-    return;
-  }
-  setIsLoadingRecommendation(true);
-  setRecommendationError(null); 
-  setTopRecommendations([]); 
-  setDetailedMICDExplanation(null);
-
-  try {
-    const candidateMovies = allMovies.filter(movie => movie.id !== selectedMovieId);
+        return {
+            score: micd,
+            palette1To2: palette1To2,
+            palette2To1: palette2To1,
+            totalCost1: weightedTotalDeltaE1, // Total weighted cost
+            totalCost2: weightedTotalDeltaE2, // Total weighted cost
+        } as MappingResult;
+    }
     
-    // Initialize the concurrency limiter: Only allow 5 fetches at once.
-    const limit = pLimit(100); 
+    // Fallback for unknown implementation type
+    console.error(`Unknown implementation method: ${implementation}`);
+    return null;
+  }, [implementation]);
 
-    // ----------------------------------------------------
-    // PHASE 1: I/O Parallelization (Fetch ALL data with CONCURRENCY LIMIT)
-    // ----------------------------------------------------
-    
-    // 1. Fetch the selected movie's colors first (we need this quickly to start comparing)
-    const selectedMovieColors = await fetchPaletteColors(selectedMovieId);
-
-    if (!selectedMovieColors || selectedMovieColors.length === 0) {
-      setRecommendationError('Could not fetch palette colors for the selected movie.');
+  const findMostSimilarMovie = useCallback(async () => {
+    if (!selectedMovieId) {
+      setTopRecommendations([]);
+      setRecommendationError(null);
       return;
     }
+    setIsLoadingRecommendation(true);
+    setRecommendationError(null); 
+    setTopRecommendations([]); 
+    setDetailedMICDExplanation(null);
 
-    // 2. Prepare promises for all candidates, wrapped by the concurrency limiter
-    const similarityPromises = candidateMovies
-      .map(candidateMovie => {
-        // Wrap the async task in 'limit' to control when it runs.
-        return limit(async () => {
-          // Fetch colors for the candidate movie
-          const candidateColors = await fetchPaletteColors(candidateMovie.id);
-          
-          if (!candidateColors || candidateColors.length === 0) {
-            return null; // Skip if no colors
-          }
-          const mapping = calculateSimilarity(selectedMovieColors, candidateColors) as MappingResult;
-          // Calculate similarity synchronously *after* the fetch is complete
-          return {
-            movie: candidateMovie,
-            mapping: mapping,
-            score: mapping.score // needs to be directly accessible to JSX
-          } as RecommendationResult;
+    try {
+      const candidateMovies = allMovies.filter(movie => movie.id !== selectedMovieId);
+      
+      // Initialize the concurrency limiter: Only allow 5 fetches at once.
+      const limit = pLimit(100); 
+
+      // ----------------------------------------------------
+      // PHASE 1: I/O Parallelization (Fetch ALL data with CONCURRENCY LIMIT)
+      // ----------------------------------------------------
+      
+      // 1. Fetch the selected movie's colors first (we need this quickly to start comparing)
+      const selectedMovieColors = fetchPaletteColors(selectedMovieId);
+
+      if (!selectedMovieColors || selectedMovieColors.length === 0) {
+        setRecommendationError('Could not fetch palette colors for the selected movie.');
+        return;
+      }
+
+      // 2. Prepare promises for all candidates, wrapped by the concurrency limiter
+      const similarityPromises = candidateMovies
+        .map(candidateMovie => {
+          // Wrap the async task in 'limit' to control when it runs.
+          return limit(async () => {
+            // Fetch colors for the candidate movie
+            const candidateColors = fetchPaletteColors(candidateMovie.id);
+            
+            if (!candidateColors || candidateColors.length === 0) {
+              return null; // Skip if no colors
+            }
+            const mapping = calculateSimilarity(selectedMovieColors, candidateColors) as MappingResult;
+            
+            // Calculate similarity synchronously *after* the fetch is complete
+            return {
+              movie: candidateMovie,
+              mapping: mapping,
+              score: mapping.score // needs to be directly accessible to JSX
+            } as RecommendationResult;
+          });
         });
-      });
 
-    // 3. Wait for all batches of limited-concurrency promises to resolve
-    const scoresAndCandidates = await Promise.all(similarityPromises);
+      // 3. Wait for all batches of limited-concurrency promises to resolve
+      const similarityScores = await Promise.all(similarityPromises);
 
-    // ----------------------------------------------------
-    // PHASE 2 & 3: Filter, Sort, and Process Results
-    // ----------------------------------------------------
+      // ----------------------------------------------------
+      // PHASE 2 & 3: Filter, Sort, and Process Results
+      // ----------------------------------------------------
+    
+      similarityScores.sort((a: any, b: any) => a.score - b.score);
+      const topThreeRecommendations = similarityScores.slice(0, 3) as RecommendationResult[];
+      setTopRecommendations(topThreeRecommendations as RecommendationResult[]); 
 
-    function isNonNull<T>(value: T | null): value is T {
-      return value !== null;
+      if (topThreeRecommendations.length > 0) {
+          setDetailedMICDExplanation(topThreeRecommendations[0].mapping);
+      } else {
+          setRecommendationError('No similar palette found.');
+      }
+    } catch (error) {
+      console.error("Error finding similar movie:", error);
+      setRecommendationError('An error occurred while finding a recommendation.');
+    } finally {
+      setIsLoadingRecommendation(false);
     }
-  
-    // 1. Filter out nulls and tell TypeScript the new array type
-    const similarityScores = scoresAndCandidates.filter(isNonNull);
-    similarityScores.sort((a: any, b: any) => a.mapping.score - b.mapping.score);
-    const topThreeRecommendations = similarityScores.slice(0, 3) as RecommendationResult[];
-    setTopRecommendations(topThreeRecommendations as RecommendationResult[]); 
-
-    if (topThreeRecommendations.length > 0) {
-        setDetailedMICDExplanation(topThreeRecommendations[0].mapping);
-    } else {
-        setRecommendationError('No similar palette found.');
-    }
-  } catch (error) {
-    console.error("Error finding similar movie:", error);
-    setRecommendationError('An error occurred while finding a recommendation.');
-  } finally {
-    setIsLoadingRecommendation(false);
-  }
-}, [selectedMovieId, fetchPaletteColors, calculateSimilarity, allMovies]);
+  }, [selectedMovieId, fetchPaletteColors, calculateSimilarity, allMovies]);
 
   const fetchColorExplanation = useCallback(async (color: string) => {
     if (!selectedMovieId || !selectedMovieData || !color) {
@@ -1478,8 +1538,5 @@ const findMostSimilarMovie = useCallback(async () => {
   );
 };
 const allMovies: MovieMetadata[] = getAllMoviePalettes()
- .map(movie => ({
- ...movie,
- id: movie.id, // Ensure the id field is explicitly included
-  }))
  .sort((a, b) => a.name.localeCompare(b.name)); // Sort alphabetically by name
+const paletteService = new PaletteService(); 
