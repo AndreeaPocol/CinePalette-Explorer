@@ -107,9 +107,9 @@ export const RecommendationExplanationPanel: React.FC<RecommendationExplanationP
           ) : (
             explanationDetails.palette2To1.length > 0 && (
               <>
-              {/* <Typography variant="h5" gutterBottom sx={{ mt: 2 }}>
+              <Typography variant="h5" gutterBottom sx={{ mt: 2 }}>
                 Color Matches (<i>{recommendedMovieName}</i> to <i>{selectedMovieName}</i>):
-              </Typography> */}
+              </Typography>
               <ul>
                 {[...(explanationDetails.palette2To1 || [])] // Create a copy to avoid modifying the original array
                   .sort((a, b) => {

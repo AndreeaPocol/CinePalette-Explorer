@@ -5,6 +5,8 @@ import Color from 'colorjs.io';
 import path from 'path';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import MaterialButton from '@mui/material/Button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, } from "@/components/ui/tooltip";
 import type { ReactElement, SyntheticEvent } from 'react';
 import React, { useState, useEffect, useCallback, FormEvent, useRef } from 'react';
@@ -1066,7 +1068,7 @@ export default function CinePaletteExplorer(): ReactElement {
             <Card className="w-full shadow-md mb-6 border border-border rounded-lg ">
               <CardHeader className="p-4 border-b border-border">
                 <CardTitle className="text-xl font-semibold text-center text-foreground">Find Movies by Mood</CardTitle>
-                <CardDescription className="text-center text-muted-foreground text-sm">Enter a genre and a color to find movies that match your mood.</CardDescription>
+                <CardDescription className="text-center text-muted-foreground text-sm">Select a color to find movies that match your mood.</CardDescription>
               </CardHeader>
               <CardContent className="p-4 md:p-6 space-y-4">
                 <div className="flex flex-col gap-4">
@@ -1207,7 +1209,7 @@ export default function CinePaletteExplorer(): ReactElement {
                   <DialogHeader>
                       <DialogTitle>Frame & Trailer Preview</DialogTitle>
                       <DialogDescription>
-                        Selected frame from the movie ({selectedColor}) and its corresponding trailer shot (if available).
+                        Selected frame from the movie ({selectedColor}) and its corresponding trailer shot.
                       </DialogDescription>
                   </DialogHeader>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
@@ -1300,7 +1302,7 @@ export default function CinePaletteExplorer(): ReactElement {
                       {selectedColor ? `Frames for ${selectedColor.charAt(0).toUpperCase() + selectedColor.slice(1)}` : "Movie Frames by Color"}
                     </CardTitle> */}
                     <CardDescription className="text-muted-foreground text-sm">
-                      {selectedColor ? `Showing frames where ${selectedColor} is dominant. Click a frame for details.` : "Select a dominant color category from the palette above."}
+                      {selectedColor ? `Showing frames where ${selectedColor} is dominant. Click a frame for details.` : "Select a dominant color category from the palette below."}
                     </CardDescription>
                   </div>
                     {selectedColor && ( // Only show the clear button when a color is selected
@@ -1334,25 +1336,9 @@ export default function CinePaletteExplorer(): ReactElement {
                   )}
                   {/* === TOGGLE BUTTON AND DETAILS SECTION === */}
                   <div className="mt-8 pt-4 border-t border-gray-200">                      
-                    <button
-                          onClick={() => setShowDetails(!showDetails)}
-                          className="flex items-center space-x-2 px-4 py-2 text-sm font-medium rounded-full text-white transition duration-150 shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2"
-                          aria-expanded={showDetails}
-                          aria-controls="palette-details"
-                      >
-                          {/* Icon that rotates when open */}
-                          <svg 
-                              className={`w-4 h-4 transition-transform duration-300 ${showDetails ? 'rotate-90' : 'rotate-0'}`} 
-                              xmlns="http://www.w3.org/2000/svg" 
-                              fill="none" 
-                              viewBox="0 0 24 24" 
-                              stroke="currentColor"
-                          >
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                          </svg>
-                          <span>{showDetails ? 'Hide Details' : 'Show Details'}</span>
-                      </button>
-                      
+                      <MaterialButton onClick={()=>setShowDetails(!showDetails)} endIcon={<ExpandMoreIcon sx={{ transform: showDetails ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.3s' }} />}>
+{showDetails ? 'Hide Details' : 'Show Details'}
+                      </MaterialButton>
                       {/* The conditionally rendered detail section */}
                       {showDetails && (
                         <div id="palette-details" className="mt-4 p-4 rounded-lg bg-card text-sm text-white border border-gray-200">
@@ -1372,10 +1358,10 @@ export default function CinePaletteExplorer(): ReactElement {
                   <Card className="mt-6  border border-border rounded-lg shadow-sm overflow-hidden">
                     <CardHeader className="p-4 border-b border-border ">
                       <CardTitle className="text-xl font-semibold text-center text-foreground">
-                        {selectedColor ? `Frames for ${selectedColor.charAt(0).toUpperCase() + selectedColor.slice(1)}` : 'Movie Frames by Color'}
+                        {selectedColor ? `Frames Containing ${selectedColor.charAt(0).toUpperCase() + selectedColor.slice(1)}` : 'Movie Frames by Color'}
                       </CardTitle>
                       {/* <CardDescription className="text-center text-muted-foreground text-sm">
-                        {selectedColor ? `Showing frames where ${selectedColor} is dominant. Click a frame for details.` : 'Select a dominant color category from the palette above.'}
+                        {selectedColor ? `Showing frames where ${selectedColor} is dominant. Click a frame for details.` : 'Select a dominant color category from the palette below.'}
                       </CardDescription> */}
                     </CardHeader>
                       <CardContent className="p-4 md:p-6">
