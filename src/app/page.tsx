@@ -95,6 +95,19 @@ export default function CinePaletteExplorer(): ReactElement {
     setIsLoadingExplanation(false);
   }
 
+  // FIX: Hydration Mismatch Fix
+  // This hook ensures content that relies on the client (like window size, user agent, or specific 
+  // Canvas environment properties) is only rendered AFTER React has mounted and hydrated.
+  const useIsMounted = () => {
+    const [mounted, setMounted] = useState(false);
+    useEffect(() => {
+        setMounted(true);
+    }, []);
+    return mounted;
+  };
+
+  const isClient = useIsMounted();
+
   useEffect(() => {
     const initializeService = async () => {
         try {
@@ -959,7 +972,8 @@ export default function CinePaletteExplorer(): ReactElement {
         </CardHeader>
         <CardContent className="p-4 md:p-6 space-y-4">
           {/* Search Section Card */}
-          {Object.keys(moodMovies).length === 0 && isLoadingMoodSearch === false && (
+          {/* In some browsers, a unique ID may be injected here, causing hydration mismatch. FIX: Use isClient check to ensure consistent initial rendering */}
+          {Object.keys(moodMovies).length === 0 && isLoadingMoodSearch === false && isClient && selectedMovieData === null && (
             <Card className="w-full shadow-md border border-border rounded-lg ">
               <CardHeader className="p-4 border-b border-border">
                 <CardTitle className="text-xl font-semibold text-center text-foreground">Search Movie Palettes</CardTitle>
@@ -1058,7 +1072,7 @@ export default function CinePaletteExplorer(): ReactElement {
           )}
 
           {/* Mood Search Section */}
-          {!isBrowsing && !selectedMovieId && ( // Hide when browsing or movie is selected
+          {!isBrowsing && !selectedMovieId && isClient && ( // Hide when browsing or movie is selected
             isLoadingMoodSearch ? (
               <div className="flex justify-center items-center p-10">
                 <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -1337,7 +1351,7 @@ export default function CinePaletteExplorer(): ReactElement {
                   {/* === TOGGLE BUTTON AND DETAILS SECTION === */}
                   <div className="mt-8 pt-4 border-t border-gray-200">                      
                       <MaterialButton onClick={()=>setShowDetails(!showDetails)} endIcon={<ExpandMoreIcon sx={{ transform: showDetails ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.3s' }} />}>
-{showDetails ? 'Hide Details' : 'Show Details'}
+                        {showDetails ? 'Hide Details' : 'Show Details'}
                       </MaterialButton>
                       {/* The conditionally rendered detail section */}
                       {showDetails && (
