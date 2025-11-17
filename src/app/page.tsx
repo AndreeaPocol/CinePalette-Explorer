@@ -93,6 +93,7 @@ export default function CinePaletteExplorer(): ReactElement {
     setHasMoreFrames(false);
     setIsLoadingMoreFrames(false);
     setIsLoadingExplanation(false);
+    setShowDetails(false);
   }
 
   // FIX: Hydration Mismatch Fix
