@@ -1,6 +1,5 @@
 'use client';
 
-import munkres from 'munkres';
 import Color from 'colorjs.io';
 import path from 'path';
 import ReactMarkdown from 'react-markdown';
