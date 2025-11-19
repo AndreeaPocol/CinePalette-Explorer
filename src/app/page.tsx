@@ -28,7 +28,7 @@ import type { TrailerFileApiOutput } from '@/app/api/trailer-file/route';
 import Link from "next/link";
 import { findMoviesByMood } from '@/app/api/find-by-mood/route';
 import { MovieListDialog } from "@/components/movie-list-dialog";
-import { RecommendationExplanationPanel, type MappingResult, RecommendationResult } from "@/components/recommendation-explanation-panel";
+import { RecommendationExplanationPanel, type MappingResult, Mapping, RecommendationResult } from "@/components/recommendation-explanation-panel";
 import type { MovieColorPaletteData } from '@/app/api/find-by-mood/route';
 import { pLimit } from '@/lib/p-limit';
 import { PaletteService, ColorProportion } from '@/data/retrieve-palette';
@@ -68,7 +68,7 @@ export default function CinePaletteExplorer(): ReactElement {
   const [moodColor, setMoodColor] = useState<string>('');
   const [moodMovies, setMoodMovies] = useState<Record<string, MovieColorPaletteData[]>>({});
   const [isLoadingMoodSearch, setIsLoadingMoodSearch] = useState<boolean>(false);
-  const [implementation, setImplementation] = useState<'hungarian' | 'micd' | 'weighted_micd' | 'weighted_hungarian'>('weighted_micd'); // Hungarian doesn't work for palettes of different lengths
+  const [implementation, setImplementation] = useState< 'micd' | 'weighted_micd' >('weighted_micd'); // Hungarian doesn't work for palettes of different lengths
   const [noMoodResults, setNoMoodResults] = useState<boolean>(false);
 
   // --- Pagination State for Frames ---
@@ -296,145 +296,8 @@ export default function CinePaletteExplorer(): ReactElement {
       }
     };
     
-    // --- 1. Weighted Hungarian Algorithm (Combined Cost) ---
-    if (implementation === 'weighted_hungarian') {
-        // Default weights for combined cost matrix (can be externalized if needed)
-        const WEIGHT_COLOR = 0.6; 
-        const WEIGHT_PROPORTION = 0.4; 
-        // using 100 as the maximum to normalize the raw Delta E scores (which ranges from 0 to ~100) down to a value between 0 and 1. 
-        // This normalization is critical because it ensures that when we calculate the combined cost
-        // Cost = Normalized Delta E * 0.5 + Proportion Difference * 0.5
-        // The two components are weighted on a similar scale (0 to 1), preventing the Delta E component from overwhelming the proportion component.
-
-        const MAX_LAB_DIST_NORM = 100.0; // Typical max Delta E for normalization
-        const UNMATCHED_PENALTY_PER_UNIT_PROPORTION = WEIGHT_PROPORTION;
-
-        // Populate the cost matrix
-        const n1 = numColors1;
-        const n2 = numColors2;
-        const size = Math.max(n1, n2);
-
-        // Combined Weighted Cost (used for optimal assignment)
-        const costMatrix: number[][] = Array.from({ length: size }, () => Array(size).fill(Infinity));
-        for (let i = 0; i < size; i++) {
-            for (let j = 0; j < size; j++) {
-              if (i < n1 && j < n2) {
-                // Case 1: Real color to Real color match
-                const c1 = colors1[i];
-                const c2 = colors2[j];
-                const deltaE = getEuclideanLabDistance(colors1[i], colors2[j]);
-                if (deltaE === null) {
-                  console.error("Stopping comparison logic because deltaE is null.");
-                  return null;
-                }
-
-                // Calculate combined weighted cost for assignment
-                const colorDiffNorm = deltaE / MAX_LAB_DIST_NORM;
-                const proportionDiff = Math.abs(c1.proportion - c2.proportion);
-
-                costMatrix[i][j] = 
-                    (colorDiffNorm * WEIGHT_COLOR) + 
-                    (proportionDiff * WEIGHT_PROPORTION);
-                      
-              } else if (i < n1 && j >= n2) {
-                  // Case 2: P1 color unmatched (matched with a dummy from P2)
-                  costMatrix[i][j] = colors1[i].proportion * UNMATCHED_PENALTY_PER_UNIT_PROPORTION;
-              } else if (i >= n1 && j < n2) {
-                  // Case 3: P2 color unmatched (matched with a dummy from P1)
-                  costMatrix[i][j] = colors2[j].proportion * UNMATCHED_PENALTY_PER_UNIT_PROPORTION;
-              }
-              // Case 4: Dummy-Dummy match (cost remains 0)
-            }
-        }
-
-        // Find the optimal assignment using the combined weighted cost matrix
-        const assignmentPairs = munkres(costMatrix); 
-
-        // Calculate final metrics based on the assignment
-        let totalDissimilarity = 0;
-        const matchedPairs: { color: any; closestInOtherPalette: any; difference: number; }[] = [];
-
-        for (const [row, col] of assignmentPairs) {
-          if ((row >= n1) || (col >= n2)) { // this was a dummy colour and will screw up the mapping later on if we don't omit it
-            continue
-          }
-          // Retrieve cost from the matrix
-          const cost = costMatrix[row][col];
-          // Sum the combined weighted cost for the total dissimilarity score
-          totalDissimilarity += cost;
-          
-          matchedPairs.push({
-              color: colors1[row],
-              closestInOtherPalette: colors2[col],
-              difference: cost,
-          });
-        }
-
-        return {
-            score: totalDissimilarity,
-            palette1To2: matchedPairs,
-            palette2To1: matchedPairs, // Symmetrical mapping
-            totalCost1: totalDissimilarity, // Total dissimilarity (ranking score)
-            totalCost2: totalDissimilarity, // Total dissimilarity (ranking score)
-        } as MappingResult;
-    // --- 2. Hungarian Algorithm (Optimal 1:1 Matching) ---
-    } else if (implementation === 'hungarian') {
-        const size = Math.max(numColors1, numColors2);
-        const costMatrix: number[][] = Array.from({ length: size }, () => Array(size).fill(Infinity));
-
-        // Fill in the Delta E cost matrix
-        for (let i = 0; i < numColors1; i++) { 
-            for (let j = 0; j < numColors2; j++) {
-              const result = getDeltaE(colors1[i], colors2[j]);
-              if (result === null) {
-                console.error("Stopping comparison logic because deltaE is null.");
-                return null;
-              }
-              costMatrix[i][j] = result;
-            }
-        }
-
-        const result = munkres(costMatrix); 
-
-        // The result is an array of [row, col] pairs representing the optimal assignment
-        const matchedPairs: { color1Index: number; color2Index: number; difference: number }[] = result
-            .filter((pair: [number, number]) => pair[0] < numColors1 && pair[1] < numColors2) // Filter out padding
-            .map((pair: [number, number]) => {
-                const deltaE = costMatrix[pair[0]][pair[1]]; // Retrieve cost from the matrix
-                return {
-                    color1Index: pair[0],
-                    color2Index: pair[1],
-                    difference: deltaE,
-                };
-            });
-
-        const totalCostSum = matchedPairs.reduce((sum, pair) => sum + pair.difference, 0);
-
-        // score is the average deltaE of the matched pairs
-        const score = matchedPairs.length > 0 ? totalCostSum / matchedPairs.length : Infinity;
-
-        // Create detailed mapping results (symmetrical mapping)
-        const detailedMapping = matchedPairs.map(pair => ({
-            color: colors1[pair.color1Index],
-            closestInOtherPalette: colors2[pair.color2Index],
-            difference: pair.difference,
-        }));
-        
-        // Total cost per color count in the original palettes
-        const totalCost1 = numColors1 > 0 ? totalCostSum / numColors1 : Infinity; 
-        const totalCost2 = numColors2 > 0 ? totalCostSum / numColors2 : Infinity; 
-
-        return {
-            score: score,
-            palette1To2: detailedMapping,
-            palette2To1: detailedMapping,
-            totalCost1: totalCost1,
-            totalCost2: totalCost2,
-        };
-    } 
-    
-    // --- 3. Simple MICD (Unweighted Mean of Minimum Distances) ---
-    else if (implementation === 'micd') {
+    // --- Simple MICD (Unweighted Mean of Minimum Distances) ---
+    if (implementation === 'micd') {
         let totalMinDeltaE1 = 0;
         const palette1To2 = colors1.map(color1 => {
             let minDeltaE = Infinity;
@@ -451,7 +314,7 @@ export default function CinePaletteExplorer(): ReactElement {
               }
             }
             if (minDeltaE !== Infinity) { totalMinDeltaE1 += minDeltaE; }
-            return { color: color1, closestInOtherPalette: closestColor2, difference: minDeltaE };
+            return { color: color1, closestInOtherPalette: closestColor2, difference: minDeltaE, pairingCost: minDeltaE } as Mapping;
         });
 
         let totalMinDeltaE2 = 0;
@@ -470,7 +333,7 @@ export default function CinePaletteExplorer(): ReactElement {
                 }
             }
             if (minDeltaE !== Infinity) { totalMinDeltaE2 += minDeltaE; }
-            return { color: color2, closestInOtherPalette: closestColor1, difference: minDeltaE };
+            return { color: color2, closestInOtherPalette: closestColor1, difference: minDeltaE, pairingCost: minDeltaE } as Mapping;
         });
 
         // Average minimum Delta E for each palette
@@ -489,7 +352,7 @@ export default function CinePaletteExplorer(): ReactElement {
         } as MappingResult;
     }
 
-    // --- 4. Weighted MICD (Weighted Mean of Minimum Distances) ---
+    // --- Weighted MICD (Weighted Mean of Minimum Distances) ---
     else if (implementation === 'weighted_micd') {
         let weightedTotalDeltaE1 = 0;
         let totalWeight1 = 0;
@@ -511,7 +374,7 @@ export default function CinePaletteExplorer(): ReactElement {
                 weightedTotalDeltaE1 += minDeltaE * color1.proportion;
                 totalWeight1 += color1.proportion;
             }
-            return { color: color1, closestInOtherPalette: closestColor2, difference: minDeltaE, weight: color1.proportion };
+            return { color: color1, closestInOtherPalette: closestColor2, difference: minDeltaE, weight: color1.proportion, pairingCost: weightedTotalDeltaE1 } as Mapping;
         });
 
         let weightedTotalDeltaE2 = 0;
@@ -534,7 +397,7 @@ export default function CinePaletteExplorer(): ReactElement {
                 weightedTotalDeltaE2 += minDeltaE * color2.proportion;
                 totalWeight2 += color2.proportion;
             }
-            return { color: color2, closestInOtherPalette: closestColor1, difference: minDeltaE, weight: color2.proportion };
+            return { color: color2, closestInOtherPalette: closestColor1, difference: minDeltaE, weight: color2.proportion, pairingCost: weightedTotalDeltaE2 } as Mapping;
         });
 
         // Weighted Average minimum Delta E for each palette
@@ -1509,7 +1372,7 @@ export default function CinePaletteExplorer(): ReactElement {
                                     >
                                       {recommendation.movie.name}
                                   </span>
-                                  <p className="text-sm text-muted-foreground">Similarity score: {recommendation.score.toFixed(2)}</p>
+                                  {/* <p className="text-sm text-muted-foreground">Similarity score: {recommendation.score.toFixed(2)}</p> */}
                                   {`/palettes/${recommendation.movie.id}.png` && (
                                     <div className="mt-2 w-full flex justify-center">
                                       <Image

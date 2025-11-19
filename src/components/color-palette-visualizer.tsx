@@ -1,12 +1,5 @@
 import React from 'react';
-
-// Define the new structure for a single color in the palette
-export interface ColorProportion {
-  r: number; // Red value (0-255)
-  g: number; // Green value (0-255)
-  b: number; // Blue value (0-255)
-  proportion: number; // Value between 0 and 1
-}
+import { ColorProportion } from '@/data/retrieve-palette';
 
 // Main component props, updated to use the new interface
 interface PaletteVisualizerProps {

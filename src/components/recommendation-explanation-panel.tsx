@@ -9,11 +9,19 @@ import { ColorProportion } from '@/data/retrieve-palette';
 const MAX_TILE_WIDTH_PX = 800; 
 const MIN_TILE_WIDTH_PX = 20; 
 
+export type Mapping = { 
+  color: ColorProportion, 
+  closestInOtherPalette: any, 
+  difference: number, 
+  weight?: number, 
+  pairingCost: number 
+}
+
 // Define a unified return type
 export type MappingResult = {
   score: number, 
-  palette1To2: { color: ColorProportion, closestInOtherPalette: any, difference: number, weight?: number }[],
-  palette2To1: { color: ColorProportion, closestInOtherPalette: any, difference: number, weight?: number }[],
+  palette1To2: Mapping[],
+  palette2To1: Mapping[],
   totalCost1: number, 
   totalCost2: number, 
 };
@@ -99,17 +107,12 @@ export const RecommendationExplanationPanel: React.FC<RecommendationExplanationP
   /**
    * Generates the title attribute text for hover.
    */
-  const getTitleText = (colorData: ColorProportion) => {
-    const proportion = colorData.proportion !== undefined && !isNaN(colorData.proportion) ? colorData.proportion : 0;
-    return `Proportion: ${(proportion * 100).toFixed(1)}%`;
-  }
-
-
+  
   return (
     <div style={{ fontFamily: 'Arial, sans-serif', padding: '16px' }}>
       <Typography variant="body1" gutterBottom>
         The movie <i>{recommendedMovieName}</i> was recommended based on your selection of <i>{selectedMovieName}</i>.
-        The similarity score between <i>{selectedMovieName}</i> and <i>{recommendedMovieName}</i> is: <b>{recommendedMovieMICD.toFixed(4)}</b>.
+        {/* The similarity score between <i>{selectedMovieName}</i> and <i>{recommendedMovieName}</i> is: <b>{recommendedMovieMICD.toFixed(4)}</b>. */}
       </Typography>
       <Button 
         onClick={handleToggleExpand} 
@@ -141,6 +144,7 @@ export const RecommendationExplanationPanel: React.FC<RecommendationExplanationP
                 }}>
                   {[...(explanationDetails.palette1To2 || [])]
                     .sort((a, b) => {
+                      // Sorting remains by proportion (descending)
                       return b.color.proportion - a.color.proportion;
                     })
                     .map((match, index) => (
@@ -157,21 +161,18 @@ export const RecommendationExplanationPanel: React.FC<RecommendationExplanationP
                         }}
                     >
                         {/* Source Color Tile (Column 1): Anchored to the right edge of its column */}
-                        <div
-                          style={getTileStyle(match.color, { justifySelf: 'end' })}
-                          title={getTitleText(match.color)}
-                        ></div>
+                        <div style={getTileStyle(match.color, { justifySelf: 'end' })}></div>
                         
                         {/* Arrow (Column 2): The fixed center axis */}
-                        <div style={{ fontSize: '1.5rem', margin: '0 15px', color: '#333', justifySelf: 'center' }}>
+                        <div 
+                          style={{ fontSize: '1.5rem', margin: '0 15px', color: '#333', justifySelf: 'center' }} 
+                          // title={`Pairing Cost: ${match.pairingCost.toFixed(4)}`}
+                          >
                           &rarr; 
                         </div>
                         
                         {/* Target Color Tile (Column 3): Anchored to the left edge of its column */}
-                        <div
-                          style={getTileStyle(match.closestInOtherPalette, { justifySelf: 'start' })}
-                          title={getTitleText(match.closestInOtherPalette)}
-                        ></div>
+                        <div style={getTileStyle(match.closestInOtherPalette, { justifySelf: 'start' })}></div>
                     </li>
                   ))}
                 </ul>
@@ -219,21 +220,18 @@ export const RecommendationExplanationPanel: React.FC<RecommendationExplanationP
                         }}
                     >
                       {/* Source Color Tile (Column 1): Anchored to the right edge of its column */}
-                      <div
-                        style={getTileStyle(match.color, { justifySelf: 'end' })}
-                        title={getTitleText(match.color)}
-                      ></div>
+                      <div style={getTileStyle(match.color, { justifySelf: 'end' })}></div>
                       
                       {/* Arrow (Column 2): The fixed center axis */}
-                      <div style={{ fontSize: '1.5rem', margin: '0 15px', color: '#333', justifySelf: 'center' }}>
+                      <div 
+                        style={{ fontSize: '1.5rem', margin: '0 15px', color: '#333', justifySelf: 'center' }} 
+                        // title={`Pairing Cost: ${match.pairingCost.toFixed(4)}`}
+                        >
                         &rarr;
                       </div>
                       
                       {/* Target Color Tile (Column 3): Anchored to the left edge of its column */}
-                      <div
-                        style={getTileStyle(match.closestInOtherPalette, { justifySelf: 'start' })}
-                        title={getTitleText(match.closestInOtherPalette)}
-                      ></div>
+                      <div style={getTileStyle(match.closestInOtherPalette, { justifySelf: 'start' })}></div>
                   </li>
                   ))}
                 </ul>
