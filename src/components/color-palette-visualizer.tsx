@@ -103,7 +103,16 @@ export const PaletteVisualizer: React.FC<PaletteVisualizerProps> = ({ palette })
       {/* === 2. DETAILED LIST OF COLORS AND PROPORTIONS === */}
       {/* Uses a responsive grid that shrinks naturally */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-        {palette.map((color, index) => {
+        {palette
+        // 1. Create a shallow copy to avoid mutating the original state
+        .slice()
+        
+        // 2. Sort the copied array
+        // (b.proportion - a.proportion) sorts in descending order
+        .sort((a, b) => b.proportion - a.proportion)
+        
+        // 3. Map over the newly sorted array
+        .map((color, index) => {
           const hexCode = rgbToHex(color.r, color.g, color.b);
           const rgbString = rgbToCssString(color.r, color.g, color.b);
 
