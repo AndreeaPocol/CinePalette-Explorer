@@ -39,4 +39,3 @@ next-env.d.ts
 
 .genkit/*
 .idx/dev.nix
-public/all_palettes_numerical_data.txt
