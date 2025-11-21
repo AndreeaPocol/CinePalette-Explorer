@@ -638,18 +638,18 @@ export default function CinePaletteExplorer(): ReactElement {
           page: 0, // Corrected back to 0 for slice(page * pageSize) logic
           pageSize: FRAME_PAGE_SIZE,
       }) as Promise<GetColorFrameFoldersPaginationOutput>; // Cast the Promise type
-      // const explanationPromise = fetchColorExplanation(foundColor);
+      const explanationPromise = fetchColorExplanation(foundColor);
 
-      // // 3. Start Explanation in the background (FIRE-AND-FORGET)
-      // // This will update the text state when it's done, non-blocking.
-      // (async () => {
-      //     try {
-      //         const explanationResult = await explanationPromise;
-      //     } catch (e: any) {
-      //         console.error("Failed to load explanation:", e);
-      //         // Do not set global error; let the main block handle critical errors
-      //     }
-      // })();
+      // 3. Start Explanation in the background (FIRE-AND-FORGET)
+      // This will update the text state when it's done, non-blocking.
+      (async () => {
+          try {
+              const explanationResult = await explanationPromise;
+          } catch (e: any) {
+              console.error("Failed to load explanation:", e);
+              // Do not set global error; let the main block handle critical errors
+          }
+      })();
       
       try {
         // 4. Await and update state for the Frames (FASTEST)
