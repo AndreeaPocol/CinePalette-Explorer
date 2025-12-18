@@ -1179,7 +1179,7 @@ export default function CinePaletteExplorer(): ReactElement {
                       {selectedColor ? `Frames for ${selectedColor.charAt(0).toUpperCase() + selectedColor.slice(1)}` : "Movie Frames by Color"}
                     </CardTitle> */}
                     <CardDescription className="text-muted-foreground text-sm">
-                      {selectedColor ? `Showing frames where ${selectedColor} is dominant. Click a frame for details.` : "Select a dominant color category from the palette below."}
+                      {selectedColor ? `Showing frames containing ${selectedColor}. Click a frame for details.` : "Select a dominant color category from the palette below."}
                     </CardDescription>
                   </div>
                     {selectedColor && ( // Only show the clear button when a color is selected
