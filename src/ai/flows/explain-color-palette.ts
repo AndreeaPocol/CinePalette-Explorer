@@ -24,8 +24,20 @@ const ExplainColorPaletteOutputSchema = z.object({
   }).refine(data => data.success === (data.explanation !== undefined), { message: "If success is true, explanation must be present. If success is false, explanation must be absent." });
 export type ExplainColorPaletteOutput = z.infer<typeof ExplainColorPaletteOutputSchema>;
 
+// Cache for explanations
+const explanationCache = new Map<string, ExplainColorPaletteOutput>();
+
 export async function explainColorPalette(input: ExplainColorPaletteInput): Promise<ExplainColorPaletteOutput> {
-  return explainColorPaletteFlow(input);
+  const cacheKey = `${input.movieId}-${input.color}`;
+  if (explanationCache.has(cacheKey)) {
+    return explanationCache.get(cacheKey)!;
+  }
+
+  const result = await explainColorPaletteFlow(input);
+  if (result.success) {
+    explanationCache.set(cacheKey, result);
+  }
+  return result;
 }
 
 const prompt = ai.definePrompt({
