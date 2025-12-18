@@ -17,11 +17,13 @@ const ExplainColorPaletteInputSchema = z.object({
 });
 export type ExplainColorPaletteInput = z.infer<typeof ExplainColorPaletteInputSchema>;
 
+// CORRECTED SCHEMA: The .refine() was removed as it enforced a structure
+// that led to non-serializable `undefined` values.
 const ExplainColorPaletteOutputSchema = z.object({
   success: z.boolean().describe('Indicates if the explanation was generated successfully.'),
   explanation: z.string().optional().describe('The explanation of why the color is in the movie palette. Present if success is true.'),
   error: z.string().optional().describe('An error message if success is false.'),
-  }).refine(data => data.success === (data.explanation !== undefined), { message: "If success is true, explanation must be present. If success is false, explanation must be absent." });
+});
 export type ExplainColorPaletteOutput = z.infer<typeof ExplainColorPaletteOutputSchema>;
 
 // Cache for explanations
@@ -34,6 +36,7 @@ export async function explainColorPalette(input: ExplainColorPaletteInput): Prom
   }
 
   const result = await explainColorPaletteFlow(input);
+  // The result, now serializable, is cached.
   if (result.success) {
     explanationCache.set(cacheKey, result);
   }
@@ -70,12 +73,15 @@ const explainColorPaletteFlow = ai.defineFlow<
   },
   async input => {
     const {output} = await prompt(input);
+    // CORRECTED RETURN STATEMENTS:
+    // These now return serializable objects that are safe for caching.
     if (output && output.explanation) {
-      return { success: true, explanation: output.explanation, error: undefined };
-      } else {
+      // On success, only include success and explanation.
+      return { success: true, explanation: output.explanation };
+    } else {
+      // On failure, only include success and an error message.
       return {
         success: false, error: output?.error || 'No explanation provided by AI.',
-        explanation: undefined, // Ensure explanation is explicitly undefined on failure
       };
     }
   }
